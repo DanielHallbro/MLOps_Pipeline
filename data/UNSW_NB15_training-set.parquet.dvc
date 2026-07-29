@@ -1,0 +1,6 @@
+outs:
+- md5: 478d63f6eb3805e17577544795f2e37f
+  size: 9618034
+  isexec: true
+  hash: md5
+  path: UNSW_NB15_training-set.parquet
