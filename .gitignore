@@ -12,3 +12,6 @@ __pycache__/
 mlruns/
 mlflow/
 models/
+
+# Local secrets, never committed - see .env.example for the template
+.env

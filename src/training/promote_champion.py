@@ -23,7 +23,8 @@ MODEL_NAME = "network-intrusion-detector"
 # STEP 1: Connect to MLflow
 # ---------------------------------------------------------------
 print("STEP 1: Connecting to MLflow...")
-mlflow.set_tracking_uri("sqlite:///mlflow/mlflow.db")
+from common import get_tracking_uri
+mlflow.set_tracking_uri(get_tracking_uri())
 client = MlflowClient()
 print("  Connected.\n")
 

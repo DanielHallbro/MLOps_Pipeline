@@ -23,8 +23,12 @@ from mlflow import MlflowClient
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src", "training"))
+from common import get_tracking_uri
+
 MODEL_NAME = "network-intrusion-detector"
-MLFLOW_TRACKING_URI = "sqlite:///mlflow/mlflow.db"
 
 app = FastAPI(title="Network Intrusion Detection API")
 
@@ -35,7 +39,7 @@ app = FastAPI(title="Network Intrusion Detection API")
 # mid-run).
 # ---------------------------------------------------------------
 print("STEP 1: Connecting to MLflow and loading champion model...")
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+mlflow.set_tracking_uri(get_tracking_uri())
 client = MlflowClient()
 
 # Resolve the alias "champion" to an actual run, so we know which

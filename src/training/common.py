@@ -5,7 +5,18 @@ which model wins and gets promoted to champion later.
 """
 
 import mlflow
+import os
 
+def get_tracking_uri():
+    """
+    Returns where MLflow should log to. Reads from the
+    MLFLOW_TRACKING_URI environment variable if it's set (this is how
+    Docker Compose will point every script at Postgres, without
+    changing a single line of code), and falls back to the local
+    SQLite file for plain, non-Docker runs on your VM, exactly what
+    every script has been using so far.
+    """
+    return os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow/mlflow.db")
 
 def log_preprocessing_artifacts():
     """

@@ -28,7 +28,8 @@ print(f"  Train: {X_train.shape}, Test: {X_test.shape}\n")
 # STEP 2: Connect to MLflow (same experiment as Random Forest)
 # ---------------------------------------------------------------
 print("STEP 2: Connecting to MLflow...")
-mlflow.set_tracking_uri("sqlite:///mlflow/mlflow.db")
+from common import get_tracking_uri
+mlflow.set_tracking_uri(get_tracking_uri())
 mlflow.set_experiment("network-intrusion-detection")
 print("  Using experiment 'network-intrusion-detection'\n")
 

@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+
+# psycopg2-binary lets MLflow talk to Postgres.
+RUN pip install --no-cache-dir mlflow psycopg2-binary
+
+EXPOSE 5000
