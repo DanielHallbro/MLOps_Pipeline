@@ -1,4 +1,5 @@
 services:
+
   postgres:
     image: postgres:16-alpine
     container_name: mlops-postgres
@@ -38,6 +39,42 @@ services:
       --default-artifact-root /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
+      --allowed-hosts "mlflow:*,localhost:*,127.0.0.1:*"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: mlops-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  training:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    container_name: mlops-training
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - .:/app
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      mlflow:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY src/training/requirements.txt ./src/training/requirements.txt
+RUN pip install --no-cache-dir -r src/training/requirements.txt
