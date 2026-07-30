@@ -81,6 +81,13 @@ def group_rare_protocols(df, common_set):
 train["proto"] = group_rare_protocols(train, common_protocols)
 test["proto"] = group_rare_protocols(test, common_protocols)
 print(f"  Protocols kept individually: {sorted(common_protocols)}")
+# Save the list so it can be logged as an artifact and reused
+# identically by the API later - without this, the API has no way
+# to know which protocols were "common enough" at training time.
+import json
+os.makedirs("models/preprocessing", exist_ok=True)
+with open("models/preprocessing/common_protocols.json", "w") as f:
+    json.dump(sorted(common_protocols), f)
 print(f"  Everything else grouped into 'other'.\n")
 
 # ---------------------------------------------------------------

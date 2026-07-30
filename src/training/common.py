@@ -20,3 +20,4 @@ def log_preprocessing_artifacts():
     """
     mlflow.log_artifact("models/preprocessing/scaler.pkl", artifact_path="preprocessors")
     mlflow.log_artifact("models/preprocessing/encoder.pkl", artifact_path="preprocessors")
+    mlflow.log_artifact("models/preprocessing/common_protocols.json", artifact_path="preprocessors")
