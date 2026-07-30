@@ -7,6 +7,7 @@ Random Forest run, so the two can be compared side by side.
 import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from common import log_preprocessing_artifacts
 import mlflow
 import mlflow.xgboost
 
@@ -95,7 +96,11 @@ with mlflow.start_run(run_name="xgboost_baseline"):
     mlflow.log_metric("precision", precision)
     mlflow.log_metric("recall", recall)
     mlflow.log_metric("f1_score", f1)
-    mlflow.xgboost.log_model(model, "model")
+    mlflow.xgboost.log_model(
+        model, "model",  # or `model` for the untuned baseline script
+        registered_model_name="network-intrusion-detector"
+    )
+    log_preprocessing_artifacts()
     print("  Logged. Run complete.\n")
 
 print("XGBoost baseline finished. Compare it with random_forest_baseline in the MLflow UI.")

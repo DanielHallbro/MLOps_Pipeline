@@ -10,6 +10,7 @@ and gives a baseline to compare XGBoost against later.
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from common import log_preprocessing_artifacts
 import mlflow
 import mlflow.sklearn
 
@@ -90,7 +91,11 @@ with mlflow.start_run(run_name="random_forest_baseline"):
     mlflow.log_metric("precision", precision)
     mlflow.log_metric("recall", recall)
     mlflow.log_metric("f1_score", f1)
-    mlflow.sklearn.log_model(model, "model")
+    mlflow.sklearn.log_model(
+        model, "model",
+        registered_model_name="network-intrusion-detector"
+    )
+    log_preprocessing_artifacts()
     print("  Logged. Run complete.\n")
 
 print("Random Forest baseline finished. Check the MLflow UI to see this run.")

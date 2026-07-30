@@ -11,6 +11,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from common import log_preprocessing_artifacts
 import mlflow
 import mlflow.sklearn
 
@@ -115,7 +116,11 @@ with mlflow.start_run(run_name="random_forest_gridsearch_tuned_v2"):
     mlflow.log_metric("recall", recall)
     mlflow.log_metric("f1_score", f1)
 
-    mlflow.sklearn.log_model(best_model, "model")
+    mlflow.sklearn.log_model(
+        best_model, "model",
+        registered_model_name="network-intrusion-detector"
+    )
+    log_preprocessing_artifacts()
 print("  Logged. Run complete.\n")
 
 print("Random Forest v2 tuning finished. Compare all five runs in the MLflow UI.")

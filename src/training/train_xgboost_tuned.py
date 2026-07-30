@@ -8,6 +8,7 @@ import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from common import log_preprocessing_artifacts
 import mlflow
 import mlflow.xgboost
 
@@ -117,7 +118,11 @@ with mlflow.start_run(run_name="xgboost_gridsearch_tuned"):
     mlflow.log_metric("recall", recall)
     mlflow.log_metric("f1_score", f1)
 
-    mlflow.xgboost.log_model(best_model, "model")
+    mlflow.xgboost.log_model(
+        best_model, "model",  # or `model` for the untuned baseline script
+        registered_model_name="network-intrusion-detector"
+    )
+    log_preprocessing_artifacts()
 print("  Logged. Run complete.\n")
 
 print("GridSearchCV tuning finished. Compare all three runs in the MLflow UI.")
