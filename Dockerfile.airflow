@@ -1,0 +1,6 @@
+FROM apache/airflow:2.10.4-python3.11
+
+# Same dependencies your training scripts already need, so Airflow
+# tasks can run them directly inside this container.
+COPY src/training/requirements.txt /tmp/training-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/training-requirements.txt

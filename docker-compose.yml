@@ -1,5 +1,25 @@
-services:
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@airflow-postgres:5432/${AIRFLOW_POSTGRES_DB}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - .:/opt/airflow/project
+  user: "${AIRFLOW_UID}:0"
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
 
+services:
   postgres:
     image: postgres:16-alpine
     container_name: mlops-postgres
@@ -46,6 +66,63 @@ services:
       timeout: 5s
       retries: 10
 
+  airflow-postgres:
+    image: postgres:16-alpine
+    container_name: airflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        exec /entrypoint bash -c "
+          airflow db migrate &&
+          airflow users create \
+            --username ${AIRFLOW_ADMIN_USER} \
+            --password ${AIRFLOW_ADMIN_PASSWORD} \
+            --firstname Chuck \
+            --lastname Norris \
+            --role Admin \
+            --email admin@example.com
+        "
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
   api:
     build:
       context: .
@@ -79,3 +156,4 @@ services:
 volumes:
   postgres_data:
   mlflow_artifacts:
+  airflow_postgres_data:
