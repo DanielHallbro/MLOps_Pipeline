@@ -21,7 +21,10 @@ import pandas as pd
 import mlflow
 from mlflow import MlflowClient
 from fastapi import FastAPI
+from fastapi import Response
 from pydantic import BaseModel
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import time
 
 import sys
 import os
@@ -69,6 +72,22 @@ print(f"  Preprocessing artifacts loaded (scaler, encoder, {len(common_protocols
 # same shape the model expects, every time.
 CATEGORICAL_COLS = ["proto", "service", "state"]
 NUMERIC_COLS = scaler.feature_names_in_.tolist()
+
+# ---------------------------------------------------------------
+# Prometheus metrics - three basic, meaningful signals for an ML API:
+# how many requests, how fast, and what the model is actually
+# predicting (useful for spotting drift later, e.g. if the attack
+# ratio suddenly shifts).
+# ---------------------------------------------------------------
+REQUEST_COUNT = Counter(
+    "predict_requests_total", "Total number of prediction requests"
+)
+REQUEST_LATENCY = Histogram(
+    "predict_request_duration_seconds", "Time spent processing a prediction request"
+)
+PREDICTION_COUNT = Counter(
+    "predictions_total", "Total predictions by outcome", ["label"]
+)
 
 
 # ---------------------------------------------------------------
@@ -163,11 +182,23 @@ def health():
 
 @app.post("/v1/predict")
 def predict(features: ConnectionFeatures):
+    start_time = time.time()
+    REQUEST_COUNT.inc()
+
     processed = preprocess_request(features)
     prediction = model.predict(processed)[0]
+    label = "attack" if prediction == 1 else "normal"
+
+    PREDICTION_COUNT.labels(label=label).inc()
+    REQUEST_LATENCY.observe(time.time() - start_time)
 
     return {
         "prediction": int(prediction),
-        "label": "attack" if prediction == 1 else "normal",
+        "label": label,
         "model_version": champion_version.version,
     }
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
