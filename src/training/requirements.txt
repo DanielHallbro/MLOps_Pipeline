@@ -3,3 +3,4 @@ scikit-learn
 xgboost
 mlflow
 joblib
+requests

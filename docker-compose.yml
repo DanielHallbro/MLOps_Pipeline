@@ -10,14 +10,22 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    AIRFLOW__CORE__PARALLELISM: '1'
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: '1'
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: '1'
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
     MLFLOW_TRACKING_URI: http://mlflow:5000
+    SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - .:/opt/airflow/project
+    - mlflow_artifacts:/mlflow/artifacts
   user: "${AIRFLOW_UID}:0"
   depends_on:
     airflow-postgres:
       condition: service_healthy
+    artifacts-init:
+      condition: service_completed_successfully
 
 services:
   postgres:
@@ -38,6 +46,13 @@ services:
       timeout: 5s
       retries: 5
 
+  artifacts-init:
+    image: busybox
+    container_name: artifacts-init
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    command: ["sh", "-c", "chmod -R 777 /mlflow/artifacts"]
+
   mlflow:
     build:
       context: .
@@ -53,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      artifacts-init:
+        condition: service_completed_successfully
     command: >
       mlflow server
       --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -138,6 +155,8 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+      artifacts-init:
+        condition: service_completed_successfully
 
   training:
     build:
@@ -152,6 +171,8 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+      artifacts-init:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
