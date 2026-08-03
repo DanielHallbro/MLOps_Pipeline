@@ -4,3 +4,8 @@ WORKDIR /app
 
 COPY src/training/requirements.txt ./src/training/requirements.txt
 RUN pip install --no-cache-dir -r src/training/requirements.txt
+
+# DVC only needed here (for dvc pull), not in Airflow's image, so it's
+# a separate install rather than bundled into the shared requirements
+# file both Dockerfile.training and Dockerfile.airflow reference.
+RUN pip install --no-cache-dir "dvc[s3]"

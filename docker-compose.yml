@@ -165,6 +165,9 @@ services:
     container_name: mlops-training
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
     volumes:
       - .:/app
       - mlflow_artifacts:/mlflow/artifacts
