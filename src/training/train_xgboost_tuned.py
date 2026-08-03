@@ -4,13 +4,14 @@ and logs the best model to MLflow, so it can be compared against the
 untuned xgboost_baseline and random_forest_baseline runs.
 """
 
-import pandas as pd
-from xgboost import XGBClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from common import log_preprocessing_artifacts
-import mlflow
 import mlflow.xgboost
+import pandas as pd
+from common import log_preprocessing_artifacts
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import GridSearchCV
+from xgboost import XGBClassifier
+
+import mlflow
 
 # ---------------------------------------------------------------
 # STEP 1: Load the already-processed data
@@ -30,6 +31,7 @@ print(f"  Train: {X_train.shape}, Test: {X_test.shape}\n")
 # ---------------------------------------------------------------
 print("STEP 2: Connecting to MLflow...")
 from common import get_tracking_uri
+
 mlflow.set_tracking_uri(get_tracking_uri())
 mlflow.set_experiment("network-intrusion-detection")
 print("  Using experiment 'network-intrusion-detection'\n")
@@ -51,7 +53,7 @@ param_grid = {
     "learning_rate": [0.1, 0.2],
 }
 print(f"  Grid: {param_grid}")
-print(f"  8 combinations x 5-fold CV = 40 models to train\n")
+print("  8 combinations x 5-fold CV = 40 models to train\n")
 
 base_model = XGBClassifier(
     scale_pos_weight=scale_pos_weight,

@@ -24,6 +24,7 @@ MODEL_NAME = "network-intrusion-detector"
 # ---------------------------------------------------------------
 print("STEP 1: Connecting to MLflow...")
 from common import get_tracking_uri
+
 mlflow.set_tracking_uri(get_tracking_uri())
 client = MlflowClient()
 print("  Connected.\n")

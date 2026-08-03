@@ -4,8 +4,10 @@ pattern for logging preprocessing artifacts stays identical no matter
 which model wins and gets promoted to champion later.
 """
 
-import mlflow
 import os
+
+import mlflow
+
 
 def get_tracking_uri():
     """

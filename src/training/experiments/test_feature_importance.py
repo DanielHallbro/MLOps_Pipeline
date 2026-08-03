@@ -8,11 +8,12 @@ using only the strongest features, to see if trimming weak columns
 helps rather than assuming it does.
 """
 
+import mlflow.sklearn
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
 import mlflow
-import mlflow.sklearn
 
 # ---------------------------------------------------------------
 # STEP 1: Load the processed data

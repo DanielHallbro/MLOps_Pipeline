@@ -18,9 +18,10 @@ leak into preparation, our results would look better than they'd
 actually be in the real world.
 """
 
+import os
+
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-import os
 
 # ---------------------------------------------------------------
 # STEP 1: Load the raw data
@@ -85,10 +86,11 @@ print(f"  Protocols kept individually: {sorted(common_protocols)}")
 # identically by the API later - without this, the API has no way
 # to know which protocols were "common enough" at training time.
 import json
+
 os.makedirs("models/preprocessing", exist_ok=True)
 with open("models/preprocessing/common_protocols.json", "w") as f:
     json.dump(sorted(common_protocols), f)
-print(f"  Everything else grouped into 'other'.\n")
+print("  Everything else grouped into 'other'.\n")
 
 # ---------------------------------------------------------------
 # STEP 5: Add two new features (feature engineering)
@@ -181,9 +183,9 @@ print("  Saved models/preprocessing/scaler.pkl and encoder.pkl\n")
 print("=" * 60)
 print("PREPROCESSING SUMMARY")
 print("=" * 60)
-print(f"1. Dropped 7 columns, including attack_cat (target leakage)")
-print(f"2. 'service' = '-' relabeled as 'unknown' (a real category)")
+print("1. Dropped 7 columns, including attack_cat (target leakage)")
+print("2. 'service' = '-' relabeled as 'unknown' (a real category)")
 print(f"3. Rare protocols grouped into 'other' ({len(common_protocols)} kept individually)")
-print(f"4. Added 2 ratio features for traffic asymmetry")
-print(f"5. One-hot encoded proto/service/state, scaled numeric columns")
+print("4. Added 2 ratio features for traffic asymmetry")
+print("5. One-hot encoded proto/service/state, scaled numeric columns")
 print(f"6. Final shape -> train: {train_encoded.shape}, test: {test_encoded.shape}")

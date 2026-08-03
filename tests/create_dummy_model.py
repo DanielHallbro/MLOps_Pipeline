@@ -14,19 +14,22 @@ Run from the repo root, same as the real training scripts:
     python3 tests/create_dummy_model.py
 """
 
-import sys
 import os
+import sys
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src", "training"))
 
 import json
+
 import joblib
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-import mlflow
-import mlflow.sklearn
 from common import get_tracking_uri, log_preprocessing_artifacts
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+import mlflow
 
 MODEL_NAME = "network-intrusion-detector"
 
@@ -119,6 +122,7 @@ with mlflow.start_run(run_name="ci_dummy_model"):
     log_preprocessing_artifacts()
 
 from mlflow import MlflowClient
+
 client = MlflowClient()
 latest_version = max(
     client.search_model_versions(f"name='{MODEL_NAME}'"),

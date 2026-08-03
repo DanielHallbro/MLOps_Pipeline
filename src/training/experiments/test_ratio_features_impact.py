@@ -10,11 +10,12 @@ only difference is the two columns, so any difference in the result
 can be attributed to them specifically.
 """
 
+import mlflow.sklearn
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
 import mlflow
-import mlflow.sklearn
 
 RATIO_FEATURES = ["sbytes_dbytes_ratio", "spkts_dpkts_ratio"]
 

@@ -10,13 +10,14 @@ attempt lost to the untuned baseline anyway, so a narrower search
 costs nothing in terms of the actual conclusion.
 """
 
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import mlflow
 import mlflow.sklearn
+import pandas as pd
 from common import get_tracking_uri, log_preprocessing_artifacts
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import GridSearchCV
+
+import mlflow
 
 # ---------------------------------------------------------------
 # STEP 1: Load the already-processed data
@@ -55,7 +56,7 @@ param_grid = {
     "min_samples_split": [2, 4],
 }
 print(f"  Grid: {param_grid}")
-print(f"  8 combinations x 2-fold CV = 16 models to train\n")
+print("  8 combinations x 2-fold CV = 16 models to train\n")
 
 base_model = RandomForestClassifier(
     class_weight="balanced",

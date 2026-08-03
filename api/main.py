@@ -16,18 +16,19 @@ without breaking whatever is already calling /v1.
 """
 
 import json
-import joblib
-import pandas as pd
-import mlflow
-from mlflow import MlflowClient
-from fastapi import FastAPI
-from fastapi import Response
-from pydantic import BaseModel
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import os
+import sys
 import time
 
-import sys
-import os
+import joblib
+import pandas as pd
+from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from pydantic import BaseModel
+
+import mlflow
+from mlflow import MlflowClient
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src", "training"))
 from common import get_tracking_uri
 

@@ -6,12 +6,13 @@ best model gets picked after both were given a chance to improve,
 not just XGBoost.
 """
 
+import mlflow.sklearn
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 import mlflow
-import mlflow.sklearn
 
 # ---------------------------------------------------------------
 # STEP 1: Load the already-processed data
@@ -31,6 +32,7 @@ print(f"  Train: {X_train.shape}, Test: {X_test.shape}\n")
 # ---------------------------------------------------------------
 print("STEP 2: Connecting to MLflow...")
 from common import get_tracking_uri
+
 mlflow.set_tracking_uri(get_tracking_uri())
 mlflow.set_experiment("network-intrusion-detection")
 print("  Using experiment 'network-intrusion-detection'\n")
@@ -47,7 +49,7 @@ param_grid = {
     "min_samples_split": [2, 5],
 }
 print(f"  Grid: {param_grid}")
-print(f"  12 combinations x 5-fold CV = 60 models to train\n")
+print("  12 combinations x 5-fold CV = 60 models to train\n")
 
 base_model = RandomForestClassifier(
     class_weight="balanced",

@@ -7,12 +7,13 @@ Random Forest is trained first because it's simpler to reason about
 and gives a baseline to compare XGBoost against later.
 """
 
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from common import log_preprocessing_artifacts
-import mlflow
 import mlflow.sklearn
+import pandas as pd
+from common import log_preprocessing_artifacts
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
+import mlflow
 
 # ---------------------------------------------------------------
 # STEP 1: Load the already-processed data
@@ -32,6 +33,7 @@ print(f"  Train: {X_train.shape}, Test: {X_test.shape}\n")
 # ---------------------------------------------------------------
 print("STEP 2: Connecting to MLflow...")
 from common import get_tracking_uri
+
 mlflow.set_tracking_uri(get_tracking_uri())
 mlflow.set_experiment("network-intrusion-detection")
 print("  Experiment set to 'network-intrusion-detection'\n")
