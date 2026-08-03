@@ -1,0 +1,74 @@
+services:
+  ci-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: mlflow_ci
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ci"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ci-artifacts-init:
+    image: busybox
+    volumes:
+      - ci_mlflow_artifacts:/mlflow/artifacts
+    command: ["sh", "-c", "chmod -R 777 /mlflow/artifacts"]
+
+  ci-mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://ci:ci@ci-postgres:5432/mlflow_ci
+    volumes:
+      - ci_mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      ci-postgres:
+        condition: service_healthy
+      ci-artifacts-init:
+        condition: service_completed_successfully
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://ci:ci@ci-postgres:5432/mlflow_ci
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+      --allowed-hosts "ci-mlflow:*,localhost:*,127.0.0.1:*"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ci-training:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    environment:
+      MLFLOW_TRACKING_URI: http://ci-mlflow:5000
+    volumes:
+      - .:/app
+      - ci_mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      ci-mlflow:
+        condition: service_healthy
+
+  ci-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      MLFLOW_TRACKING_URI: http://ci-mlflow:5000
+    ports:
+      - "8001:8000"
+    volumes:
+      - ci_mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      ci-mlflow:
+        condition: service_healthy
+
+volumes:
+  ci_mlflow_artifacts:

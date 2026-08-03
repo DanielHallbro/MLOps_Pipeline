@@ -1,0 +1,134 @@
+name: CI - Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lint Python code
+        run: |
+          pip install ruff
+          ruff check src/ api/ tests/ --exit-zero
+
+      - name: Create placeholder .env for Compose variable substitution
+        run: |
+          cat > .env << 'EOF'
+          POSTGRES_USER=placeholder
+          POSTGRES_PASSWORD=placeholder
+          POSTGRES_DB=placeholder
+          AIRFLOW_POSTGRES_USER=placeholder
+          AIRFLOW_POSTGRES_PASSWORD=placeholder
+          AIRFLOW_POSTGRES_DB=placeholder
+          AIRFLOW_UID=1000
+          AIRFLOW_FERNET_KEY=placeholder
+          AIRFLOW_WEBSERVER_SECRET_KEY=placeholder
+          AIRFLOW_ADMIN_USER=placeholder
+          AIRFLOW_ADMIN_PASSWORD=placeholder
+          SLACK_WEBHOOK_URL=
+          GRAFANA_ADMIN_USER=placeholder
+          GRAFANA_ADMIN_PASSWORD=placeholder
+          EOF
+
+      - name: Build and start isolated CI stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build \
+            ci-postgres ci-artifacts-init ci-mlflow
+
+      - name: Wait for MLflow to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose.yml -f docker-compose.ci.yml ps ci-mlflow | grep -q "healthy"; then
+              echo "MLflow is healthy"
+              exit 0
+            fi
+            echo "Waiting for MLflow... ($i/30)"
+            sleep 2
+          done
+          echo "MLflow did not become healthy in time"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs ci-mlflow
+          exit 1
+
+      - name: Create and register dummy champion model
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml run --rm \
+            ci-training python3 tests/create_dummy_model.py
+
+      - name: Start CI API
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build ci-api
+
+      - name: Wait for API to respond
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8001/health > /dev/null; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs ci-api
+          exit 1
+
+      - name: Test health endpoint
+        run: curl -sf http://localhost:8001/health
+
+      - name: Test prediction endpoint
+        run: |
+          response=$(curl -sf -X POST http://localhost:8001/v1/predict \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dur": 0.5, "proto": "tcp", "service": "http", "state": "FIN",
+              "spkts": 10, "dpkts": 8, "sbytes": 500, "dbytes": 4000,
+              "rate": 20.0, "sload": 8000.0, "dload": 64000.0,
+              "sloss": 0, "dloss": 0, "sinpkt": 50.0, "dinpkt": 60.0,
+              "sjit": 1.0, "djit": 1.5, "swin": 255, "dwin": 255,
+              "tcprtt": 0.1, "synack": 0.05, "ackdat": 0.05,
+              "smean": 50, "dmean": 500, "trans_depth": 1,
+              "response_body_len": 3000, "ct_src_dport_ltm": 1, "ct_dst_sport_ltm": 1
+            }')
+          echo "Response: $response"
+          echo "$response" | grep -q '"prediction"' || (echo "Response missing 'prediction' field" && exit 1)
+
+      - name: Verify unseen category is handled gracefully
+        run: |
+          response=$(curl -sf -X POST http://localhost:8001/v1/predict \
+            -H "Content-Type: application/json" \
+            -d '{
+              "dur": 0.1, "proto": "totally_made_up_protocol", "service": "dns", "state": "CON",
+              "spkts": 2, "dpkts": 2, "sbytes": 100, "dbytes": 100,
+              "rate": 5.0, "sload": 500.0, "dload": 500.0,
+              "sloss": 0, "dloss": 0, "sinpkt": 10.0, "dinpkt": 10.0,
+              "sjit": 0.1, "djit": 0.1, "swin": 255, "dwin": 255,
+              "tcprtt": 0.02, "synack": 0.01, "ackdat": 0.01,
+              "smean": 50, "dmean": 50, "trans_depth": 0,
+              "response_body_len": 0, "ct_src_dport_ltm": 1, "ct_dst_sport_ltm": 1
+            }')
+          echo "Response: $response"
+          echo "$response" | grep -q '"prediction"' || (echo "Unseen category was not handled gracefully" && exit 1)
+
+      - name: Verify malformed input is rejected
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8001/v1/predict \
+            -H "Content-Type: application/json" \
+            -d '{"dur": 0.5, "proto": "tcp"}')
+          echo "Status: $status"
+          [ "$status" = "422" ] || (echo "Expected 422 for malformed input, got $status" && exit 1)
+
+      - name: Tear down CI stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
