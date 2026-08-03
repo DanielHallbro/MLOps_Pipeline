@@ -3,10 +3,14 @@ retrain_pipeline.py - Retrains all candidate models and promotes the
 best one to champion in MLflow.
 
 The four candidate scripts are independent experiments (no data
-dependency between them), so they run in parallel. promote_champion
-only runs once ALL four have finished, since it needs to compare every
-candidate's F1 score to pick a winner - that dependency is enforced
-explicitly below, not just assumed.
+dependency between them). They're set to run one at a time
+(MAX_ACTIVE_TASKS_PER_DAG=1) rather than in parallel - an earlier
+attempt at running all four simultaneously oversubscribed the dev
+VM's CPU cores, since each script also internally parallelizes via
+GridSearchCV. Sequential execution is slower in wall-clock time but
+stable on this hardware. promote_champion only runs once ALL four
+have finished, since it needs to compare every candidate's F1 score
+to pick a winner.
 """
 
 import os
@@ -47,6 +51,14 @@ default_args = {
     "on_failure_callback": notify_failure,
 }
 
+# umask 000 ensures any files/folders these tasks create inside the
+# shared mlflow_artifacts volume are writable by other containers too
+# (mlflow/api run as root, Airflow runs as AIRFLOW_UID) - without
+# this, cross-container permission errors can occur on first write.
+# Applied to every task, not just one, since any of them could be
+# the first to write a new file into that shared volume.
+UMASK_PREFIX = "umask 000 && "
+
 with DAG(
     dag_id="network_intrusion_retraining",
     description="Retrains all candidate models and promotes the best one to champion",
@@ -54,37 +66,38 @@ with DAG(
     schedule="@weekly",
     start_date=datetime(2026, 7, 1),
     catchup=False,
+    max_active_runs=1,
     tags=["mlops", "training"],
 ) as dag:
 
     train_random_forest = BashOperator(
         task_id="train_random_forest",
-        bash_command=f"cd {PROJECT_DIR} && python3 src/training/train_random_forest.py",
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/train_random_forest.py",
     )
 
     train_xgboost = BashOperator(
         task_id="train_xgboost",
-        bash_command=f"cd {PROJECT_DIR} && python3 src/training/train_xgboost.py",
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/train_xgboost.py",
     )
 
     train_xgboost_tuned = BashOperator(
         task_id="train_xgboost_tuned",
-        bash_command=f"cd {PROJECT_DIR} && python3 src/training/train_xgboost_tuned.py",
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/train_xgboost_tuned.py",
     )
 
-    train_random_forest_tuned_v2 = BashOperator(
-        task_id="train_random_forest_tuned_v2",
-        bash_command=f"cd {PROJECT_DIR} && python3 src/training/train_random_forest_tuned_v2.py",
+    train_random_forest_tuned_v3 = BashOperator(
+        task_id="train_random_forest_tuned_v3",
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/train_random_forest_tuned_v3.py",
     )
 
     promote_champion = BashOperator(
         task_id="promote_champion",
-        bash_command=f"cd {PROJECT_DIR} && python3 src/training/promote_champion.py",
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/promote_champion.py",
     )
 
     [
         train_random_forest,
         train_xgboost,
         train_xgboost_tuned,
-        train_random_forest_tuned_v2,
+        train_random_forest_tuned_v3,
     ] >> promote_champion
