@@ -37,8 +37,8 @@ print(f"  Train: {X_train.shape}, Test: {X_test.shape}\n")
 # ---------------------------------------------------------------
 print("STEP 2: Connecting to MLflow...")
 mlflow.set_tracking_uri(get_tracking_uri())
-mlflow.set_experiment("network-intrusion-detection")
-print("  Using experiment 'network-intrusion-detection'\n")
+mlflow.set_experiment("network-intrusion-detection-v2")
+print("  Using experiment 'network-intrusion-detection-v2'\n")
 
 # ---------------------------------------------------------------
 # STEP 3: Set up a small, fast hyperparameter grid

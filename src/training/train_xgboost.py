@@ -32,8 +32,8 @@ print("STEP 2: Connecting to MLflow...")
 from common import get_tracking_uri
 
 mlflow.set_tracking_uri(get_tracking_uri())
-mlflow.set_experiment("network-intrusion-detection")
-print("  Using experiment 'network-intrusion-detection'\n")
+mlflow.set_experiment("network-intrusion-detection-v2")
+print("  Using experiment 'network-intrusion-detection-v2'\n")
 
 with mlflow.start_run(run_name="xgboost_baseline"):
 
