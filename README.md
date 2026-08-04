@@ -12,7 +12,7 @@
 **Course:** AI, Automation and Machine Learning<br>
 **Assignment:** Advanced MLOps project<br>
 **Program:** IT and Cybersecurity, Frans Schartaus Handelsinstitut<br>
-**Tools:** DVC · AWS S3 · MLflow · PostgreSQL · FastAPI · Apache Airflow · Prometheus · Grafana · Docker Compose · GitHub Actions<br>
+**Tools:** DVC · AWS S3 · MLflow · PostgreSQL · FastAPI · Apache Airflow · Prometheus · Grafana · Docker Compose · Kubernetes · GitHub Actions<br>
 **Dataset:** UNSW-NB15 - 175,341 training / 82,332 test network connections
 
 ---
@@ -25,6 +25,7 @@
 - Data versioning with DVC + AWS S3
 - Infrastructure as Code with Terraform
 - FastAPI prediction service, loading the current champion model dynamically
+- Kubernetes deployment with a Horizontal Pod Autoscaler, scaling the API under real load
 - Prometheus metrics + Grafana dashboard
 - CI pipeline with an isolated Docker stack and real smoke tests
 
@@ -38,14 +39,15 @@
 4. [Results](#results)
 5. [Runtime architecture](#runtime-architecture)
 6. [Monitoring](#monitoring)
-7. [Tech stack](#tech-stack)
-8. [Data cleaning decisions](#data-cleaning-decisions)
-9. [Project structure](#project-structure)
-10. [Running it locally](#running-it-locally)
-11. [CI/CD](#cicd)
-12. [Security](#security)
-13. [Key learnings](#key-learnings)
-14. [What's not (yet) included](#whats-not-yet-included)
+7. [Kubernetes & autoscaling](#kubernetes--autoscaling)
+8. [Tech stack](#tech-stack)
+9. [Data cleaning decisions](#data-cleaning-decisions)
+10. [Project structure](#project-structure)
+11. [Running it locally](#running-it-locally)
+12. [CI/CD](#cicd)
+13. [Security](#security)
+14. [Key learnings](#key-learnings)
+15. [What's not (yet) included](#whats-not-yet-included)
 
 ---
 
@@ -123,6 +125,24 @@ Three panels, each with a hover description explaining what it shows and why: re
 
 ---
 
+## Kubernetes & autoscaling
+
+The rest of the stack (Postgres, MLflow, Airflow, Prometheus, Grafana) still runs via Docker Compose exactly as described above. Only FastAPI, the one component that actually benefits from scaling under request load, runs in Kubernetes on a local `minikube` cluster, with a Horizontal Pod Autoscaler (HPA) watching it. A deliberate scope decision: the stateful services don't gain anything from horizontal scaling, so a full-stack migration is left as a future direction rather than something this addition needed to solve.
+
+| Piece | File | Role |
+|---|---|---|
+| Deployment | `k8s/deployment.yaml` | Runs the FastAPI container as pods; each pod requests 100m CPU / 256Mi memory, capped at 500m CPU / 512Mi |
+| Service | `k8s/service.yaml` | Stable internal address (`fastapi:8000`), load-balances across whichever pods currently exist |
+| HorizontalPodAutoscaler | `k8s/hpa.yaml` | Watches average CPU utilization across pods, scales between 1 and 4 replicas, targeting 60% utilization |
+
+![HPA scaling FastAPI under load](docs/images/hpa-scaling.png)
+
+Replica count and CPU utilization from a real run of `scripts/k8s_stress_test.sh`: a cold-start script that brings up Docker Compose, minikube, and the manifests from nothing, drives real concurrent load at the API, and confirms scaling up under load and back down to 1 once load stops, rather than relying on a one-off manual observation. See [Key learnings](#key-learnings) for the one real wrinkle running FastAPI outside Compose caused.
+
+[⬆ Back to top](#readme-top)
+
+---
+
 ## Tech stack
 
 | Layer | Tool | Why |
@@ -135,6 +155,7 @@ Three panels, each with a hover description explaining what it shows and why: re
 | Orchestration | Apache Airflow (LocalExecutor) | Schedules retraining, with a Slack alert on task failure |
 | Monitoring | Prometheus + Grafana | Custom metrics: request rate, prediction outcomes, p95 latency |
 | Containerization | Docker Compose | Every long-running service above is defined and orchestrated from one compose file |
+| Autoscaling | Kubernetes (minikube) + HPA | Scales the FastAPI service between 1 and 4 pods based on CPU load, scoped to the one stateless service that benefits from it |
 | CI/CD | GitHub Actions | Builds an isolated copy of the Docker stack on GitHub's own infrastructure, trains a dummy model, and smoke-tests the real API code path |
 
 [⬆ Back to top](#readme-top)
@@ -162,12 +183,13 @@ The repository is organized by responsibility rather than by framework, training
 │   └── experiments/             # standalone analyses (feature importance, ratio-feature impact)
 ├── api/                          # FastAPI service
 ├── airflow/dags/                 # retraining DAG
+├── k8s/                           # Deployment, Service, HPA manifests for FastAPI
 ├── infra/                        # Terraform, provisions the S3 bucket + IAM user
 ├── data/                         # DVC pointer files (actual dataset pulled via dvc pull)
 ├── notebooks/                    # exploratory data analysis scripts
 ├── prometheus/                   # scrape config
 ├── grafana/dashboards/           # exported dashboard JSON
-├── scripts/                      # rebuild_pipeline.sh, demo_check.sh, simulate_traffic.sh
+├── scripts/                      # rebuild_pipeline.sh, demo_check.sh, simulate_traffic.sh, k8s_stress_test.sh
 ├── tests/                        # CI dummy-model smoke test
 ├── docs/images/                  # architecture diagrams, dashboard screenshot
 ├── .github/workflows/ci.yml      # GitHub Actions workflow: lint, build, smoke test
@@ -214,7 +236,13 @@ docker compose up -d --build
 ./scripts/simulate_traffic.sh
 ```
 
-**6. Access the services:**
+**6. Try the Kubernetes autoscaling** (requires `minikube` and `kubectl`, brings up the FastAPI Deployment/Service/HPA on top of the running stack and load-tests it end to end):
+
+```bash
+./scripts/k8s_stress_test.sh
+```
+
+**7. Access the services:**
 - **FastAPI:** `http://localhost:8000/docs`
 - **MLflow:** `http://localhost:5001`
 - **Airflow:** `http://localhost:8080`
@@ -273,7 +301,7 @@ The following are never committed to this repo:
 
 **A `docker compose` command operates on every service in scope, not just the one you're thinking about.** Tearing down an isolated CI test stack with `docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v` also wiped the real development stack's volumes, MLflow's champion history and Airflow's metadata included, since merging both compose files puts every service from both files in scope for that command, not just the CI-specific ones. Recovered via `rebuild_pipeline.sh`, but the real lesson was to be explicit about exactly which services a teardown targets, not just which files get passed to the command.
 
-**A file saved inside a throwaway container is gone the moment that container exits.** Training tasks initially wrote model artifacts to a path inside their own short-lived container rather than a shared volume, so files that looked successfully saved simply vanished once the container finished and was removed. Fixed by mounting the same volume across every container that needed to read or write those files, MLflow, the API, and the training container all pointing at the same shared storage.
+**Kubernetes doesn't share anything with Docker Compose by default.** Pulling FastAPI out into a separate minikube cluster broke its normal path to MLflow: a pod can't resolve a Compose service name like `mlflow`, and can't mount a Compose volume either, both only exist inside the Compose network. Fixed by having MLflow also serve its artifacts over plain HTTP instead of relying solely on a shared volume, and pointing the pod at `host.minikube.internal`, minikube's built-in route back to the host machine. A concrete example of how adding a new orchestration layer can quietly invalidate assumptions the rest of the stack didn't know it was relying on.
 
 [⬆ Back to top](#readme-top)
 
@@ -281,7 +309,7 @@ The following are never committed to this repo:
 
 ## What's not (yet) included
 
-- **Kubernetes/HPA**: considered as a portfolio addition, not built into the current stack
+- **Full Kubernetes migration**: Postgres, MLflow, Airflow, Prometheus, and Grafana still run via Docker Compose; only FastAPI runs in Kubernetes so far (see [Kubernetes & autoscaling](#kubernetes--autoscaling))
 - **A guided first-time setup script** (prompting for credentials to generate `.env`): planned, not yet built
 
 [⬆ Back to top](#readme-top)
