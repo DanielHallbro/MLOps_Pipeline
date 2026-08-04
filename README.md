@@ -137,7 +137,7 @@ The rest of the stack (Postgres, MLflow, Airflow, Prometheus, Grafana) still run
 
 ![HPA scaling FastAPI under load](docs/images/hpa-scaling.png)
 
-Replica count and CPU utilization from a real run of `scripts/k8s_stress_test.sh`: a cold-start script that brings up Docker Compose, minikube, and the manifests from nothing, drives real concurrent load at the API, and confirms scaling up under load and back down to 1 once load stops, rather than relying on a one-off manual observation. See [Key learnings](#key-learnings) for the one real wrinkle running FastAPI outside Compose caused.
+Replica count and CPU utilization from a real run of `scripts/k8s_stress_test.sh`: a cold-start script that brings up Docker Compose, minikube, and the manifests from nothing, drives real concurrent load at the API, and confirms scaling. This run jumped from 1 to 4 replicas within about 90 seconds of load starting (CPU peaked at ~488% of the 100m request, i.e. genuinely saturating each pod's 500m limit), held at 4 for HPA's default 5-minute scale-down stabilization window after load stopped, then dropped back to 1. See [Key learnings](#key-learnings) for the one real wrinkle running FastAPI outside Compose caused.
 
 [⬆ Back to top](#readme-top)
 
@@ -212,37 +212,31 @@ Requires Docker and Docker Compose.
 
 **1. Create your own `.env`.** Copy `.env.example` to `.env` and fill in real values yourself (AWS access keys, Postgres passwords, Airflow's Fernet key and admin credentials, Slack webhook, Grafana admin). There's no automated setup script for this yet (see [What's not (yet) included](#whats-not-yet-included)), so every credential needs to be generated and entered manually before anything below will actually run.
 
-**2. Bring the stack up:**
-
-```bash
-docker compose up -d --build
-```
-
-**3. Bring the data and a trained champion model up from nothing** (requires valid AWS credentials in `.env` to pull the dataset from S3):
+**2. Bring the data and a trained champion model up from nothing** (also brings up the Docker Compose stack itself; requires valid AWS credentials in `.env` to pull the dataset from S3):
 
 ```bash
 ./scripts/rebuild_pipeline.sh
 ```
 
-**4. Check everything's healthy before a demo:**
+**3. Bring up Kubernetes and check everything's healthy before a demo** (also brings up Docker Compose if it isn't already running):
 
 ```bash
 ./scripts/demo_check.sh
 ```
 
-**5. Generate some live traffic to see the Grafana dashboard move:**
+**4. Generate some live traffic to see the Grafana dashboard move:**
 
 ```bash
 ./scripts/simulate_traffic.sh
 ```
 
-**6. Try the Kubernetes autoscaling** (requires `minikube` and `kubectl`, brings up the FastAPI Deployment/Service/HPA on top of the running stack and load-tests it end to end):
+**5. Try the Kubernetes autoscaling** (requires `minikube` and `kubectl`, brings up the FastAPI Deployment/Service/HPA on top of the running stack and load-tests it end to end):
 
 ```bash
 ./scripts/k8s_stress_test.sh
 ```
 
-**7. Access the services:**
+**6. Access the services:**
 - **FastAPI:** `http://localhost:8000/docs`
 - **MLflow:** `http://localhost:5001`
 - **Airflow:** `http://localhost:8080`
