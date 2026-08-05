@@ -1,3 +1,11 @@
+# Watches average CPU across every pod the Deployment below manages,
+# and adjusts the replica count to keep it near the 60% target.
+# 60% is measured against each pod's 100m CPU *request* in
+# deployment.yaml (not its 500m limit), so the real target is ~60m
+# of actual CPU use per pod. Checked roughly every 15s by default.
+# Scale-up reacts quickly; scale-down waits out Kubernetes' default
+# 5-minute stabilization window before actually dropping replicas,
+# so a brief dip in load doesn't cause pods to flap up and down.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

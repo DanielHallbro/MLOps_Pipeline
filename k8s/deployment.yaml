@@ -1,3 +1,8 @@
+# Runs FastAPI as pods that HorizontalPodAutoscaler (hpa.yaml) scales
+# between 1 and 4 based on CPU. Only FastAPI runs in Kubernetes - the
+# rest of the stack (Postgres, MLflow, Airflow, Prometheus, Grafana)
+# still runs via Docker Compose. See the README's "Kubernetes &
+# autoscaling" section for the full reasoning.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,7 +10,7 @@ metadata:
   labels:
     app: fastapi
 spec:
-  replicas: 1
+  replicas: 1  # starting count only - HPA overrides this once active
   selector:
     matchLabels:
       app: fastapi
@@ -17,20 +22,40 @@ spec:
       containers:
         - name: fastapi
           image: mlops_pipeline-api:latest
+          # Never pull: the image is built directly into minikube's
+          # own Docker daemon (via `eval $(minikube docker-env)`
+          # before `docker build`), not pushed to any registry. A
+          # real deployment would push to a registry and use a normal
+          # pull policy instead.
           imagePullPolicy: Never
           ports:
             - containerPort: 8000
           env:
             - name: MLFLOW_TRACKING_URI
+              # host.minikube.internal: minikube's route back to the
+              # machine it's running on. A pod here can't resolve
+              # Compose service names or mount Compose volumes - both
+              # only exist inside the Compose network - so this reaches
+              # MLflow the same way any other outside caller would:
+              # over HTTP, via --serve-artifacts on the MLflow side
+              # (see docker-compose.yml).
               value: "http://host.minikube.internal:5001"
           resources:
             requests:
+              # What HPA's 60% target in hpa.yaml is measured against
+              # - 60% of this 100m is ~60m of actual CPU per pod.
               cpu: "100m"
               memory: "256Mi"
             limits:
               cpu: "500m"
               memory: "512Mi"
           readinessProbe:
+            # Gates whether the Service (service.yaml) sends this pod
+            # traffic. A brand-new pod needs a moment to connect to
+            # MLflow, download the champion model's artifacts, and
+            # load them into memory before it can actually answer a
+            # prediction - this is what stops traffic from being
+            # routed to a pod mid-startup.
             httpGet:
               path: /health
               port: 8000
@@ -38,6 +63,14 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
           livenessProbe:
+            # A separate, more patient check: "is this pod still alive
+            # at all", not "is it ready for traffic". If it stops
+            # responding, Kubernetes kills and restarts just this pod.
+            # timeoutSeconds/failureThreshold both widened beyond
+            # Kubernetes' defaults (1s/3) after real testing showed a
+            # pod under genuine CPU load could take longer than 1s to
+            # answer /health and get killed for exactly the load it
+            # was supposed to be handling.
             httpGet:
               path: /health
               port: 8000

@@ -1,11 +1,18 @@
+# Gives the FastAPI pods one stable internal address (fastapi:8000)
+# and load-balances across whichever pods currently exist. Pods are
+# disposable - HPA creates and destroys them, each with a new IP - so
+# nothing should ever depend on an individual pod's address directly.
 apiVersion: v1
 kind: Service
 metadata:
   name: fastapi
 spec:
   selector:
-    app: fastapi
+    app: fastapi  # auto-discovers every pod carrying this label
   ports:
     - port: 8000
       targetPort: 8000
+  # ClusterIP: only reachable from inside the cluster, not from the
+  # host directly - `kubectl port-forward` or an in-cluster caller
+  # are the two ways to actually reach it.
   type: ClusterIP
