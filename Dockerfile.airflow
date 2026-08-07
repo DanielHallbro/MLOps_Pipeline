@@ -1,11 +1,20 @@
 FROM apache/airflow:2.10.4-python3.11
 
-# Same dependencies training scripts already need, so Airflow
+# Same dependencies your training scripts already need, so Airflow
 # tasks can run them directly inside this container.
+# --constraint pins against Airflow's own published constraint set for
+# 2.10.4/py3.11, so these pinned versions can't accidentally resolve
+# to something that conflicts with a package Airflow itself depends on
+# (e.g. its own pinned cryptography version) - without it, pip is free
+# to pick versions that satisfy requirements.txt but silently break
+# Airflow's own internals.
 COPY src/training/requirements.txt /tmp/training-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/training-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/training-requirements.txt \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.4/constraints-3.11.txt"
 
 # DVC needed here now too: the retraining DAG pulls fresh raw data
 # from S3 before preprocessing/training, so this image needs the same
-# dvc[s3] install Dockerfile.training already has.
-RUN pip install --no-cache-dir "dvc[s3]"
+# dvc[s3] install Dockerfile.training already has - same version, so
+# both containers read/write the S3 remote's cache in an identical
+# format.
+RUN pip install --no-cache-dir "dvc[s3]==3.67.1"

@@ -1,6 +1,7 @@
-pandas
-scikit-learn
-xgboost
-mlflow
-joblib
-requests
+numpy==1.26.4
+pandas==2.1.4
+scikit-learn==1.9.0
+xgboost==3.2.0
+mlflow==3.2.0
+joblib==1.5.3
+requests==2.32.3

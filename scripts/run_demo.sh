@@ -71,7 +71,7 @@ echo "Done - Grafana panels should show the spike, with both outcome categories 
 # ------------------------------------------------------------------
 # STAGE 3: MLflow registry
 # ------------------------------------------------------------------
-pause "STAGE 3/6: Switch to MLflow (http://localhost:5001), open the experiment's run list table (not 'Compare Runs') and click the F1/accuracy column to sort descending. Say: 'Random Forest baseline beat every tuned attempt across both model families, real measured result.'"
+pause "STAGE 3/6: Switch to MLflow (http://192.168.49.1:5001), open the experiment's run list table (not 'Compare Runs') and click the F1/accuracy column to sort descending. Say: 'Random Forest baseline beat every tuned attempt across both model families, real measured result.'"
 
 # ------------------------------------------------------------------
 # STAGE 4: Airflow

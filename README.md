@@ -456,7 +456,7 @@ Requires Docker and Docker Compose.
 
 **6. Access the services:**
 - **FastAPI:** `http://localhost:8000/docs`
-- **MLflow:** `http://localhost:5001`
+- **MLflow:** `http://192.168.49.1:5001` (bound to minikube's gateway IP, not localhost - see [Kubernetes & autoscaling](#kubernetes--autoscaling))
 - **Airflow:** `http://localhost:8080`
 - **Prometheus:** `http://localhost:9090`
 - **Grafana:** `http://localhost:3000`
