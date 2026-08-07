@@ -126,8 +126,7 @@ from sklearn.preprocessing import StandardScaler
 print(&quot;STEP 1: Loading raw data...&quot;)
 train = pd.read_parquet(&quot;data/UNSW_NB15_training-set.parquet&quot;)
 test = pd.read_parquet(&quot;data/UNSW_NB15_testing-set.parquet&quot;)
-print(f&quot;  Loaded {len(train)} training rows and {len(test)} test rows.
-&quot;)
+print(f&quot;  Loaded {len(train)} training rows and {len(test)} test rows.\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 2: Drop columns we don&#x27;t want the model to see
@@ -150,8 +149,7 @@ COLUMNS_TO_DROP = [
 ]
 train = train.drop(columns=COLUMNS_TO_DROP)
 test = test.drop(columns=COLUMNS_TO_DROP)
-print(f&quot;  Dropped: {COLUMNS_TO_DROP}
-&quot;)
+print(f&quot;  Dropped: {COLUMNS_TO_DROP}\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 3: Fix the &#x27;service&#x27; column
@@ -163,8 +161,7 @@ print(&quot;STEP 3: Cleaning up &#x27;service&#x27; column...&quot;)
 # instead of dropping over half our dataset.
 train[&quot;service&quot;] = train[&quot;service&quot;].astype(str).replace(&quot;-&quot;, &quot;unknown&quot;)
 test[&quot;service&quot;] = test[&quot;service&quot;].astype(str).replace(&quot;-&quot;, &quot;unknown&quot;)
-print(&quot;  &#x27;-&#x27; renamed to &#x27;unknown&#x27;, kept as a real category.
-&quot;)
+print(&quot;  &#x27;-&#x27; renamed to &#x27;unknown&#x27;, kept as a real category.\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 4: Group rare network protocols together
@@ -197,8 +194,7 @@ import json
 os.makedirs(&quot;models/preprocessing&quot;, exist_ok=True)
 with open(&quot;models/preprocessing/common_protocols.json&quot;, &quot;w&quot;) as f:
     json.dump(sorted(common_protocols), f)
-print(&quot;  Everything else grouped into &#x27;other&#x27;.
-&quot;)
+print(&quot;  Everything else grouped into &#x27;other&#x27;.\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 5: Add two new features (feature engineering)
@@ -216,8 +212,7 @@ print(&quot;STEP 5: Adding traffic ratio features...&quot;)
 for df in (train, test):
     df[&quot;sbytes_dbytes_ratio&quot;] = df[&quot;sbytes&quot;] / (df[&quot;dbytes&quot;] + 1)
     df[&quot;spkts_dpkts_ratio&quot;] = df[&quot;spkts&quot;] / (df[&quot;dpkts&quot;] + 1)
-print(&quot;  Added: sbytes_dbytes_ratio, spkts_dpkts_ratio
-&quot;)
+print(&quot;  Added: sbytes_dbytes_ratio, spkts_dpkts_ratio\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 6: One-hot encode the text columns
@@ -236,6 +231,8 @@ CATEGORICAL_COLS = [&quot;proto&quot;, &quot;service&quot;, &quot;state&quot;]
 # handle_unknown=&quot;ignore&quot; means if a live request someday has a
 # category the encoder never saw during training, it gets encoded as
 # all zeros instead of crashing the API.
+# sparse_output=False returns a plain array instead of a memory-
+# efficient sparse matrix - fine here, only 3 columns involved.
 encoder = OneHotEncoder(sparse_output=False, handle_unknown=&quot;ignore&quot;)
 encoder.fit(train[CATEGORICAL_COLS])
 
@@ -250,8 +247,7 @@ def encode_categoricals(df, encoder, cat_cols):
 
 train_encoded = encode_categoricals(train, encoder, CATEGORICAL_COLS)
 test_encoded = encode_categoricals(test, encoder, CATEGORICAL_COLS)
-print(f&quot;  Done. Train shape: {train_encoded.shape}, test shape: {test_encoded.shape}
-&quot;)
+print(f&quot;  Done. Train shape: {train_encoded.shape}, test shape: {test_encoded.shape}\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 7: Scale numeric columns
@@ -263,10 +259,16 @@ numeric_cols = train_encoded.select_dtypes(
 numeric_cols = [c for c in numeric_cols if c != &quot;label&quot;]
 
 scaler = StandardScaler()
+# Transforms each column to mean=0, std=1. fit_transform on train
+# LEARNS the mean/std; transform (not fit_transform) on test REUSES
+# them - the golden rule, written directly in code.
+#
+# Honest note: RF/XGBoost don&#x27;t actually need scaled inputs (trees
+# split on relative order, not magnitude) - done anyway for
+# consistency, in case a scale-sensitive model gets swapped in later.
 train_encoded[numeric_cols] = scaler.fit_transform(train_encoded[numeric_cols])
 test_encoded[numeric_cols] = scaler.transform(test_encoded[numeric_cols])
-print(f&quot;  Scaled {len(numeric_cols)} numeric columns.
-&quot;)
+print(f&quot;  Scaled {len(numeric_cols)} numeric columns.\n&quot;)
 
 # ---------------------------------------------------------------
 # STEP 8: Save the processed data AND the fitted preprocessing objects
@@ -287,8 +289,7 @@ os.makedirs(&quot;models/preprocessing&quot;, exist_ok=True)
 joblib.dump(scaler, &quot;models/preprocessing/scaler.pkl&quot;)
 joblib.dump(encoder, &quot;models/preprocessing/encoder.pkl&quot;)
 print(&quot;  Saved data/processed/train.parquet and test.parquet&quot;)
-print(&quot;  Saved models/preprocessing/scaler.pkl and encoder.pkl
-&quot;)
+print(&quot;  Saved models/preprocessing/scaler.pkl and encoder.pkl\n&quot;)
 # ---------------------------------------------------------------
 # SUMMARY - what actually happened, in plain language
 # ---------------------------------------------------------------
@@ -325,6 +326,141 @@ The untuned Random Forest baseline won every comparison:
 While F1 was used as the primary ranking metric to handle the class imbalance, the untuned Random Forest baseline also achieved a strong ~94% recall - minimizing false negatives (missed attacks), which matters most for a real-world intrusion detection system.
 
 Every GridSearchCV tuning attempt, across all six configurations tested, not just the four above, lost to the simple, untuned baseline. A real, measured result rather than an assumption that more tuning always helps. Random Forest's default settings already generalized well to the harder, official test split, XGBoost is often expected to edge it out, but not here, and not after real tuning attempts on both.
+
+The champion's actual configuration: 100 trees, max depth 15, `class_weight="balanced"` to handle the 68/32 class split - see [Data cleaning decisions](#data-cleaning-decisions) and the dropdown below for the full reasoning behind each choice.
+
+<details>
+<summary><strong>Show src/training/train_random_forest.py</strong> (click to expand)</summary>
+
+<pre><code class="language-python">
+&quot;&quot;&quot;
+train_random_forest.py - Trains a Random Forest baseline on the
+processed UNSW-NB15 data and logs everything to MLflow.
+
+This is the first of two models being compared (XGBoost comes next).
+Random Forest is trained first because it&#x27;s simpler to reason about
+and gives a baseline to compare XGBoost against later.
+&quot;&quot;&quot;
+
+import mlflow.sklearn
+import pandas as pd
+from common import log_preprocessing_artifacts
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+
+import mlflow
+
+# ---------------------------------------------------------------
+# STEP 1: Load the already-processed data
+# ---------------------------------------------------------------
+print(&quot;STEP 1: Loading processed data...&quot;)
+train = pd.read_parquet(&quot;data/processed/train.parquet&quot;)
+test = pd.read_parquet(&quot;data/processed/test.parquet&quot;)
+
+X_train = train.drop(columns=[&quot;label&quot;])
+y_train = train[&quot;label&quot;]
+X_test = test.drop(columns=[&quot;label&quot;])
+y_test = test[&quot;label&quot;]
+print(f&quot;  Train: {X_train.shape}, Test: {X_test.shape}\n&quot;)
+
+# ---------------------------------------------------------------
+# STEP 2: Connect to MLflow and start a run
+# ---------------------------------------------------------------
+print(&quot;STEP 2: Connecting to MLflow...&quot;)
+from common import get_tracking_uri
+
+mlflow.set_tracking_uri(get_tracking_uri())
+mlflow.set_experiment(&quot;network-intrusion-detection-v2&quot;)
+print(&quot;  Experiment set to &#x27;network-intrusion-detection-v2&#x27;\n&quot;)
+
+with mlflow.start_run(run_name=&quot;random_forest_baseline&quot;):
+
+    # -------------------------------------------------------
+    # STEP 3: Train the model
+    # -------------------------------------------------------
+    print(&quot;STEP 3: Training Random Forest...&quot;)
+    n_estimators = 100
+    # Number of trees. More = a more stable average vote, but
+    # returns shrink fast past ~100.
+    max_depth = 15
+    # Max depth per tree. Deeper trees can memorize noise
+    # (overfitting) - 15 beat shallower options in testing.
+
+    # class_weight=&quot;balanced&quot;: weights the rarer class higher during
+    # training so the model can&#x27;t win by just favoring the common
+    # class. Doesn&#x27;t touch the actual data, only the training cost.
+
+    # random_state=42: fixes all randomness so re-running this script
+    # produces the identical model every time.
+
+    # n_jobs=-1: uses all CPU cores for THIS training run. Not the
+    # same as Airflow&#x27;s PARALLELISM=1, which limits how many
+    # DIFFERENT scripts run at once - they don&#x27;t conflict.
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        class_weight=&quot;balanced&quot;,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(X_train, y_train)
+    print(&quot;  Training complete.\n&quot;)
+
+    # -------------------------------------------------------
+    # STEP 4: Log the parameters used
+    # -------------------------------------------------------
+    print(&quot;STEP 4: Logging parameters to MLflow...&quot;)
+    mlflow.log_param(&quot;model_type&quot;, &quot;RandomForest&quot;)
+    mlflow.log_param(&quot;n_estimators&quot;, n_estimators)
+    mlflow.log_param(&quot;max_depth&quot;, max_depth)
+    mlflow.log_param(&quot;class_weight&quot;, &quot;balanced&quot;)
+    print(&quot;  Logged.\n&quot;)
+
+    # -------------------------------------------------------
+    # STEP 5: Evaluate on the test set
+    # -------------------------------------------------------
+    print(&quot;STEP 5: Evaluating on test data...&quot;)
+    # predict() averages each tree&#x27;s predicted probability (soft
+    # voting), not a simple majority vote of hard yes/no answers.
+    y_pred = model.predict(X_test)
+
+    # accuracy: % correct overall - can look good even on a weak
+    # model here since classes aren&#x27;t balanced (68/32).
+    accuracy = accuracy_score(y_test, y_pred)
+    # precision: of what we called &quot;attack&quot;, how much really was.
+    precision = precision_score(y_test, y_pred)
+    # recall: of all real attacks, how many we caught - missing this
+    # is the worse failure mode for an intrusion detector.
+    recall = recall_score(y_test, y_pred)
+    # f1: balances precision and recall - the metric that actually
+    # picks the champion model (see promote_champion.py).
+    f1 = f1_score(y_test, y_pred)
+
+    print(f&quot;  Accuracy:  {accuracy:.4f}&quot;)
+    print(f&quot;  Precision: {precision:.4f}&quot;)
+    print(f&quot;  Recall:    {recall:.4f}&quot;)
+    print(f&quot;  F1-score:  {f1:.4f}\n&quot;)
+
+    # -------------------------------------------------------
+    # STEP 6: Log metrics and the trained model itself
+    # -------------------------------------------------------
+    print(&quot;STEP 6: Logging metrics and model to MLflow...&quot;)
+    mlflow.log_metric(&quot;accuracy&quot;, accuracy)
+    mlflow.log_metric(&quot;precision&quot;, precision)
+    mlflow.log_metric(&quot;recall&quot;, recall)
+    mlflow.log_metric(&quot;f1_score&quot;, f1)
+    mlflow.sklearn.log_model(
+        model, &quot;model&quot;,
+        registered_model_name=&quot;network-intrusion-detector&quot;
+    )
+    log_preprocessing_artifacts()
+    print(&quot;  Logged. Run complete.\n&quot;)
+
+print(&quot;Random Forest baseline finished. Check the MLflow UI to see this run.&quot;)
+</code></pre>
+
+</details>
+
 
 [⬆ Back to top](#readme-top)
 
