@@ -443,7 +443,7 @@ The repository is organized by responsibility rather than by framework, training
 ├── notebooks/                    # exploratory data analysis scripts
 ├── prometheus/                   # scrape config
 ├── grafana/dashboards/           # exported dashboard JSON
-├── scripts/                      # rebuild_pipeline.sh, demo_check.sh, simulate_traffic.sh, k8s_stress_test.sh
+├── scripts/                      # see the table below
 ├── tests/                        # CI dummy-model smoke test
 ├── docs/images/                  # architecture diagrams, dashboard screenshot
 ├── .github/workflows/ci.yml      # GitHub Actions workflow: lint, build, smoke test
@@ -455,6 +455,18 @@ The repository is organized by responsibility rather than by framework, training
 ├── Dockerfile.training            # builds the training container image (also used by Airflow tasks)
 └── .env.example                   # template for real credentials, no real secrets
 ```
+
+Seven scripts is a lot to keep straight, so here's what each one is actually for:
+
+| Script | What it does | When to run it |
+|---|---|---|
+| `check_prerequisites.sh` | Verifies the required host tools are installed | Once, before anything else |
+| `rebuild_pipeline.sh` | Brings up Compose, pulls data via DVC, trains all 4 candidate models, promotes a champion - from nothing | First real setup, or to prove the whole pipeline works end to end |
+| `demo_check.sh` | Brings up Compose + Kubernetes and verifies every service, including a live prediction through K8s | Right before presenting or demoing |
+| `simulate_traffic.sh` | Sends a steady stream of predictions so Grafana has live, moving data to show | A minute or two before showing the Grafana dashboard |
+| `k8s_stress_test.sh` | Cold-starts everything and load-tests the HPA to prove it actually scales under real load | To (re-)verify the Kubernetes/HPA piece specifically, not for everyday use |
+| `run_demo.sh` | A paced, six-stage walkthrough of the whole demo, advances one step at a time on Enter | During the actual live presentation |
+| `plot_hpa_scaling.py` | Turns the CSV data `k8s_stress_test.sh` logs into the scaling chart used in this README | Called automatically by `k8s_stress_test.sh` - not meant to be run directly |
 
 [⬆ Back to top](#readme-top)
 
