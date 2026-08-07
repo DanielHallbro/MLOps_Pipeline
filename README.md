@@ -522,6 +522,7 @@ The following are never committed to this repo:
 ## What's not (yet) included
 
 - **Full Kubernetes migration**: Postgres, MLflow, Airflow, Prometheus, and Grafana still run via Docker Compose; only FastAPI runs in Kubernetes so far (see [Kubernetes & autoscaling](#kubernetes--autoscaling))
+- **Container registry (GHCR)**: the API image is built directly into minikube's own Docker daemon (`imagePullPolicy: Never`) rather than pushed anywhere - deliberate for now, since a local build can't fail from bad demo-day wifi. Pushing to `ghcr.io` (via the `GITHUB_TOKEN` already in CI, no new secret needed) is the natural next step.
 - **A guided first-time setup script** (prompting for credentials to generate `.env`): planned, not yet built
 
 [⬆ Back to top](#readme-top)
