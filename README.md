@@ -17,6 +17,20 @@
 
 ---
 
+## Overview
+
+Network intrusion detection is a real-time cybersecurity problem - malicious traffic keeps arriving whether anyone's watching or not, faster than any analyst could review by hand. This pipeline classifies traffic as normal or attack as it arrives.
+
+It also stays maintained after that: Airflow retrains it on a schedule, Grafana tracks the live service, and a better model gets promoted to production automatically the moment one wins.
+
+![Architecture overview](docs/images/architecture-overview.png)
+
+Data flows from a public network-traffic dataset through cleaning and feature engineering, into two candidate model families (Random Forest and XGBoost), tracked and compared in MLflow. The best-performing model is served through a FastAPI endpoint. GitHub Actions builds and smoke-tests the whole stack on every push.
+
+[⬆ Back to top](#readme-top)
+
+---
+
 ## Features
 
 - End-to-end MLOps pipeline, from raw data to a served, monitored prediction API
@@ -33,39 +47,24 @@
 
 ## Table of contents
 
-1. [Features](#features)
-2. [Overview](#overview)
+1. [Overview](#overview)
+2. [Features](#features)
 3. [Why this dataset](#why-this-dataset)
-4. [Results](#results)
-5. [Runtime architecture](#runtime-architecture)
-6. [Monitoring](#monitoring)
-7. [Kubernetes & autoscaling](#kubernetes--autoscaling)
-8. [Tech stack](#tech-stack)
-9. [Data cleaning decisions](#data-cleaning-decisions)
-10. [Project structure](#project-structure)
-11. [Running it locally](#running-it-locally)
-12. [CI/CD](#cicd)
-13. [Security](#security)
+4. [Data cleaning decisions](#data-cleaning-decisions)
+5. [Results](#results)
+6. [Runtime architecture](#runtime-architecture)
+7. [Tech stack](#tech-stack)
+8. [Monitoring](#monitoring)
+9. [Kubernetes & autoscaling](#kubernetes--autoscaling)
+10. [CI/CD](#cicd)
+11. [Security](#security)
+12. [Project structure](#project-structure)
+13. [Running it locally](#running-it-locally)
 14. [Key learnings](#key-learnings)
 15. [Conclusion & real-world application](#conclusion--real-world-application)
 16. [What's not (yet) included](#whats-not-yet-included)
 
 ---
-
-## Overview
-
-![Architecture overview](docs/images/architecture-overview.png)
-
-Network intrusion detection is a real-time cybersecurity problem - malicious traffic keeps arriving whether anyone's watching or not, faster than any analyst could review by hand. This pipeline classifies traffic as normal or attack as it arrives.
-
-It also stays maintained after that: Airflow retrains it on a schedule, Grafana tracks the live service, and a better model gets promoted to production automatically the moment one wins.
-
-Data flows from a public network-traffic dataset through cleaning and feature engineering, into two candidate model families (Random Forest and XGBoost), tracked and compared in MLflow. The best-performing model is served through a FastAPI endpoint. GitHub Actions builds and smoke-tests the whole stack on every push.
-
-[⬆ Back to top](#readme-top)
-
----
-
 ## Why this dataset
 
 UNSW-NB15 was chosen over several other candidate intrusion-detection datasets after evaluating class balance, size, and format. It's a modern network intrusion dataset created by the Australian Centre for Cyber Security (ACCS), generated using the IXIA PerfectStorm tool to produce a mix of real normal traffic and synthetic contemporary attack behavior, a more current alternative to older benchmark datasets from the late 1990s/early 2000s.
@@ -78,92 +77,6 @@ It also ships with an official, pre-split train/test file pair. The split is int
 - 36 original features per connection record
 
 **Source:** [UNSW-NB15 on Kaggle](https://www.kaggle.com/datasets/dhoogla/unswnb15)
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Results
-
-Six candidate configurations were trained and compared in total: two untuned baselines, and four tuning attempts across both model families. The table below shows the four still-active candidates. Two earlier Random Forest tuning attempts (an overfitting demonstration and a since-replaced slower version) were retired and are documented in `src/training/legacy/` rather than repeated here.
-
-The untuned Random Forest baseline won every comparison:
-
-| Model | F1 (test set) | Precision | Recall |
-|---|---|---|---|
-| **Random Forest (baseline)** | **0.9214** ← champion | **0.9027** | **0.9409** |
-| XGBoost (tuned) | 0.9189 | 0.8982 | 0.9406 |
-| XGBoost (baseline) | 0.9175 | 0.9027 | 0.9328 |
-| Random Forest (tuned v3) | 0.9167 | 0.8926 | 0.9421 |
-
-While F1 was used as the primary ranking metric to handle the class imbalance, the untuned Random Forest baseline also achieved a strong ~94% recall - minimizing false negatives (missed attacks), which matters most for a real-world intrusion detection system.
-
-Every GridSearchCV tuning attempt, across all six configurations tested, not just the four above, lost to the simple, untuned baseline. A real, measured result rather than an assumption that more tuning always helps. Random Forest's default settings already generalized well to the harder, official test split, XGBoost is often expected to edge it out, but not here, and not after real tuning attempts on both.
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Runtime architecture
-
-<img src="docs/images/architecture-technical.png" width="650">
-
-The overview diagram (above) highlights the model-selection workflow, comparing Random Forest and XGBoost candidates. This diagram focuses on what's actually deployed and running, which is why it shows one training container rather than the individual model families, the model comparison already happened by the time this stage of the pipeline runs.
-
-Terraform doesn't appear in this diagram on purpose: it provisions the S3 bucket and IAM user once, ahead of time, and isn't part of the running system shown here.
-
-The diagram itself traces the actual flow, arrows and labels show exactly what triggers what. It reads top to bottom, starting with Airflow, which is what actually kicks off a training cycle. GitHub Actions sits on its own arrow into FastAPI since it runs independently on every push, not as a step inside the scheduled training cycle above it.
-
-Color groups reflect subsystems: purple for the Airflow stack, blue for MLflow's, teal for the serving-and-monitoring trio, green for external services, tan for one-time setup containers. Airflow's Postgres is deliberately separate from MLflow's, since the two have different access patterns (Airflow's scheduler polls constantly), matching Apache's own reference architecture rather than sharing one database across both.
-
-Two containers (`artifacts-init`, `airflow-init`) run once at startup, fixing shared-volume permissions and creating Airflow's database schema and admin user, then exit. They're not part of the ongoing request flow, which is why they're shown separately rather than inline with the persistent containers.
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Monitoring
-
-![Grafana dashboard](docs/images/grafana-dashboard.png)
-
-Three panels, each with a hover description explaining what it shows and why: request rate (is the API actually being used, and is that changing), predictions by outcome (a sudden shift in the attack/normal ratio is worth investigating), and API response time, worst-case (how slow the slowest normal requests get, not just the average, since an average can hide a real slowdown).
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Kubernetes & autoscaling
-
-The rest of the stack (Postgres, MLflow, Airflow, Prometheus, Grafana) still runs via Docker Compose exactly as described above. Only FastAPI, the one component that actually benefits from scaling under request load, runs in Kubernetes on a local `minikube` cluster, with a Horizontal Pod Autoscaler (HPA) watching it. A deliberate scope decision: the stateful services don't gain anything from horizontal scaling, so a full-stack migration is left as a future direction rather than something this addition needed to solve.
-
-| Piece | File | Role |
-|---|---|---|
-| Deployment | `k8s/deployment.yaml` | Runs the FastAPI container as pods; each pod requests 100m CPU / 256Mi memory, capped at 500m CPU / 512Mi |
-| Service | `k8s/service.yaml` | Stable internal address (`fastapi:8000`), load-balances across whichever pods currently exist |
-| HorizontalPodAutoscaler | `k8s/hpa.yaml` | Watches average CPU utilization across pods, scales between 1 and 4 replicas, targeting 60% utilization |
-
-![HPA scaling FastAPI under load](docs/images/hpa-scaling.png)
-
-Replica count and CPU utilization from a real run of `scripts/k8s_stress_test.sh`: a cold-start script that brings up Docker Compose, minikube, and the manifests from nothing, drives real concurrent load at the API, and confirms scaling. This run jumped from 1 to 4 replicas within about 90 seconds of load starting (CPU peaked at ~488% of the 100m request, i.e. genuinely saturating each pod's 500m limit), held at 4 for HPA's default 5-minute scale-down stabilization window after load stopped, then dropped back to 1. See [Key learnings](#key-learnings) for the one real wrinkle running FastAPI outside Compose caused.
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Tech stack
-
-| Layer | Tool | Why |
-|---|---|---|
-| Data versioning | DVC + AWS S3 | Dataset never touches git, versioned like code instead |
-| Infrastructure as Code | Terraform | Provisions the S3 bucket and IAM user as code, rather than clicking them together manually in the AWS console |
-| Model training | scikit-learn (Random Forest), XGBoost | Two model families compared honestly, not assumed |
-| Experiment tracking | MLflow + Postgres | Postgres over SQLite for real concurrent access, since the API, Airflow, and CI all touch it |
-| Serving | FastAPI | Loads the current champion model dynamically via MLflow's registry, no hardcoded model path |
-| Orchestration | Apache Airflow (LocalExecutor) | Schedules retraining, with a Slack alert on task failure |
-| Monitoring | Prometheus + Grafana | Custom metrics: request rate, prediction outcomes, p95 latency |
-| Containerization | Docker Compose | Every long-running service above is defined and orchestrated from one compose file |
-| Autoscaling | Kubernetes (minikube) + HPA | Scales the FastAPI service between 1 and 4 pods based on CPU load, scoped to the one stateless service that benefits from it |
-| CI/CD | GitHub Actions | Builds an isolated copy of the Docker stack on GitHub's own infrastructure, trains a dummy model, and smoke-tests the real API code path |
 
 [⬆ Back to top](#readme-top)
 
@@ -396,6 +309,124 @@ print(f&quot;6. Final shape -&gt; train: {train_encoded.shape}, test: {test_enco
 
 ---
 
+## Results
+
+Six candidate configurations were trained and compared in total: two untuned baselines, and four tuning attempts across both model families. The table below shows the four still-active candidates. Two earlier Random Forest tuning attempts (an overfitting demonstration and a since-replaced slower version) were retired and are documented in `src/training/legacy/` rather than repeated here.
+
+The untuned Random Forest baseline won every comparison:
+
+| Model | F1 (test set) | Precision | Recall |
+|---|---|---|---|
+| **Random Forest (baseline)** | **0.9214** ← champion | **0.9027** | **0.9409** |
+| XGBoost (tuned) | 0.9189 | 0.8982 | 0.9406 |
+| XGBoost (baseline) | 0.9175 | 0.9027 | 0.9328 |
+| Random Forest (tuned v3) | 0.9167 | 0.8926 | 0.9421 |
+
+While F1 was used as the primary ranking metric to handle the class imbalance, the untuned Random Forest baseline also achieved a strong ~94% recall - minimizing false negatives (missed attacks), which matters most for a real-world intrusion detection system.
+
+Every GridSearchCV tuning attempt, across all six configurations tested, not just the four above, lost to the simple, untuned baseline. A real, measured result rather than an assumption that more tuning always helps. Random Forest's default settings already generalized well to the harder, official test split, XGBoost is often expected to edge it out, but not here, and not after real tuning attempts on both.
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## Runtime architecture
+
+<img src="docs/images/architecture-technical.png" width="650">
+
+The overview diagram (above) highlights the model-selection workflow, comparing Random Forest and XGBoost candidates. This diagram focuses on what's actually deployed and running, which is why it shows one training container rather than the individual model families, the model comparison already happened by the time this stage of the pipeline runs.
+
+Terraform doesn't appear in this diagram on purpose: it provisions the S3 bucket and IAM user once, ahead of time, and isn't part of the running system shown here.
+
+The diagram itself traces the actual flow, arrows and labels show exactly what triggers what. It reads top to bottom, starting with Airflow, which is what actually kicks off a training cycle. GitHub Actions sits on its own arrow into FastAPI since it runs independently on every push, not as a step inside the scheduled training cycle above it.
+
+Color groups reflect subsystems: purple for the Airflow stack, blue for MLflow's, teal for the serving-and-monitoring trio, green for external services, tan for one-time setup containers. Airflow's Postgres is deliberately separate from MLflow's, since the two have different access patterns (Airflow's scheduler polls constantly), matching Apache's own reference architecture rather than sharing one database across both.
+
+Two containers (`artifacts-init`, `airflow-init`) run once at startup, fixing shared-volume permissions and creating Airflow's database schema and admin user, then exit. They're not part of the ongoing request flow, which is why they're shown separately rather than inline with the persistent containers.
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## Tech stack
+
+| Layer | Tool | Why |
+|---|---|---|
+| Data versioning | DVC + AWS S3 | Dataset never touches git, versioned like code instead |
+| Infrastructure as Code | Terraform | Provisions the S3 bucket and IAM user as code, rather than clicking them together manually in the AWS console |
+| Model training | scikit-learn (Random Forest), XGBoost | Two model families compared honestly, not assumed |
+| Experiment tracking | MLflow + Postgres | Postgres over SQLite for real concurrent access, since the API, Airflow, and CI all touch it |
+| Serving | FastAPI | Loads the current champion model dynamically via MLflow's registry, no hardcoded model path |
+| Orchestration | Apache Airflow (LocalExecutor) | Schedules retraining, with a Slack alert on task failure |
+| Monitoring | Prometheus + Grafana | Custom metrics: request rate, prediction outcomes, p95 latency |
+| Containerization | Docker Compose | Every long-running service above is defined and orchestrated from one compose file |
+| Autoscaling | Kubernetes (minikube) + HPA | Scales the FastAPI service between 1 and 4 pods based on CPU load, scoped to the one stateless service that benefits from it |
+| CI/CD | GitHub Actions | Builds an isolated copy of the Docker stack on GitHub's own infrastructure, trains a dummy model, and smoke-tests the real API code path |
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## Monitoring
+
+![Grafana dashboard](docs/images/grafana-dashboard.png)
+
+Three panels, each with a hover description explaining what it shows and why: request rate (is the API actually being used, and is that changing), predictions by outcome (a sudden shift in the attack/normal ratio is worth investigating), and API response time, worst-case (how slow the slowest normal requests get, not just the average, since an average can hide a real slowdown).
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## Kubernetes & autoscaling
+
+The rest of the stack (Postgres, MLflow, Airflow, Prometheus, Grafana) still runs via Docker Compose exactly as described above. Only FastAPI, the one component that actually benefits from scaling under request load, runs in Kubernetes on a local `minikube` cluster, with a Horizontal Pod Autoscaler (HPA) watching it. A deliberate scope decision: the stateful services don't gain anything from horizontal scaling, so a full-stack migration is left as a future direction rather than something this addition needed to solve.
+
+| Piece | File | Role |
+|---|---|---|
+| Deployment | `k8s/deployment.yaml` | Runs the FastAPI container as pods; each pod requests 100m CPU / 256Mi memory, capped at 500m CPU / 512Mi |
+| Service | `k8s/service.yaml` | Stable internal address (`fastapi:8000`), load-balances across whichever pods currently exist |
+| HorizontalPodAutoscaler | `k8s/hpa.yaml` | Watches average CPU utilization across pods, scales between 1 and 4 replicas, targeting 60% utilization |
+
+![HPA scaling FastAPI under load](docs/images/hpa-scaling.png)
+
+Replica count and CPU utilization from a real run of `scripts/k8s_stress_test.sh`: a cold-start script that brings up Docker Compose, minikube, and the manifests from nothing, drives real concurrent load at the API, and confirms scaling. This run jumped from 1 to 4 replicas within about 90 seconds of load starting (CPU peaked at ~488% of the 100m request, i.e. genuinely saturating each pod's 500m limit), held at 4 for HPA's default 5-minute scale-down stabilization window after load stopped, then dropped back to 1. See [Key learnings](#key-learnings) for the one real wrinkle running FastAPI outside Compose caused.
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## CI/CD
+
+Every push to `main` triggers a GitHub Actions workflow that spins up a second, fully isolated copy of the core stack (`docker-compose.ci.yml`), separate from the real development stack and using throwaway credentials, so nothing in CI ever touches real data, real secrets, or the real MLflow history.
+
+Inside that isolated stack, the workflow:
+1. Builds every Docker image fresh, to catch broken Dockerfiles or dependency issues early
+2. Trains a small, fast dummy model (on synthetic data, not the real dataset) and registers it in the isolated MLflow instance as the champion
+3. Starts the real API container and confirms it loads that dummy champion correctly via MLflow's registry, the exact same code path used in production
+4. Sends a real prediction request and checks the response is well-formed
+5. Sends a request with an unseen category value and confirms it's handled gracefully rather than crashing
+6. Sends a malformed request and confirms it's rejected with a proper 422, not a silent failure
+
+The whole isolated stack is torn down at the end of the run regardless of outcome, so nothing lingers between workflow runs.
+
+[⬆ Back to top](#readme-top)
+
+---
+
+## Security
+
+The following are never committed to this repo:
+- AWS access keys and secret keys (DVC/S3 access), supplied via `.env`, never hardcoded
+- Postgres, Airflow, and Grafana credentials, supplied via `.env`
+- Slack webhook URL, supplied via `.env`
+- The raw dataset itself, versioned via DVC/S3, not stored in git
+
+`.env.example` documents every variable a real `.env` needs, with placeholder values only. `.gitignore` excludes `.env`, local DVC credentials, and MLflow's local SQLite database.
+
+[⬆ Back to top](#readme-top)
+
+---
+
 ## Project structure
 
 The repository is organized by responsibility rather than by framework, training code, serving code, and orchestration each live in their own top-level folder.
@@ -470,38 +501,6 @@ Requires Docker and Docker Compose.
 
 ---
 
-## CI/CD
-
-Every push to `main` triggers a GitHub Actions workflow that spins up a second, fully isolated copy of the core stack (`docker-compose.ci.yml`), separate from the real development stack and using throwaway credentials, so nothing in CI ever touches real data, real secrets, or the real MLflow history.
-
-Inside that isolated stack, the workflow:
-1. Builds every Docker image fresh, to catch broken Dockerfiles or dependency issues early
-2. Trains a small, fast dummy model (on synthetic data, not the real dataset) and registers it in the isolated MLflow instance as the champion
-3. Starts the real API container and confirms it loads that dummy champion correctly via MLflow's registry, the exact same code path used in production
-4. Sends a real prediction request and checks the response is well-formed
-5. Sends a request with an unseen category value and confirms it's handled gracefully rather than crashing
-6. Sends a malformed request and confirms it's rejected with a proper 422, not a silent failure
-
-The whole isolated stack is torn down at the end of the run regardless of outcome, so nothing lingers between workflow runs.
-
-[⬆ Back to top](#readme-top)
-
----
-
-## Security
-
-The following are never committed to this repo:
-- AWS access keys and secret keys (DVC/S3 access), supplied via `.env`, never hardcoded
-- Postgres, Airflow, and Grafana credentials, supplied via `.env`
-- Slack webhook URL, supplied via `.env`
-- The raw dataset itself, versioned via DVC/S3, not stored in git
-
-`.env.example` documents every variable a real `.env` needs, with placeholder values only. `.gitignore` excludes `.env`, local DVC credentials, and MLflow's local SQLite database.
-
-[⬆ Back to top](#readme-top)
-
----
-
 ## Key learnings
 
 ### Data and modeling
@@ -530,7 +529,7 @@ This isn't a finished product, and getting it running somewhere else from scratc
 
 Building it also made the model's actual limits pretty obvious to me, and I'd rather say them out loud than pretend they're not there:
 
-- I never tested it against adversarial input, and I probably should have. sbytes_dbytes_ratio turned out to be one of the most valuable engineered features (see Data cleaning decisions) - which also means it's an obvious thing to target if someone wanted to shape traffic to sneak past it.
+- I never tested it against adversarial input, and I probably should have. `sbytes_dbytes_ratio` turned out to be one of the most valuable engineered features (see [Data cleaning decisions](#data-cleaning-decisions)) - which also means it's an obvious thing to target if someone wanted to shape traffic to sneak past it.
 - The API has zero authentication right now. Totally fine for a school project running on my own VM, not fine for anything real.
 - Nothing here detects concept drift. The model is frozen at whatever UNSW-NB15 looked like when I trained it - Airflow retrains it on a schedule, but that's not the same as noticing when it's gone stale.
 
