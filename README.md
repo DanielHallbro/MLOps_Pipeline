@@ -462,9 +462,9 @@ The repository is organized by responsibility rather than by framework, training
 
 ## Running it locally
 
-Requires Docker and Docker Compose.
+**Prerequisites:** Docker and Docker Compose, always. `terraform`, only for step 1 if you don't already have AWS credentials for this project's S3 bucket. `minikube` and `kubectl`, only for steps 3 and 5 (the Kubernetes/HPA piece). Run `./scripts/check_prerequisites.sh` to verify what you have before starting.
 
-**1. Create your own `.env`.** Copy `.env.example` to `.env` and fill in real values yourself (AWS access keys, Postgres passwords, Airflow's Fernet key and admin credentials, Slack webhook, Grafana admin). There's no automated setup script for this yet (see [What's not (yet) included](#whats-not-yet-included)), so every credential needs to be generated and entered manually before anything below will actually run.
+**1. Get AWS credentials, then create your own `.env`.** If you don't already have an access key for this project's S3 bucket, `infra/` provisions one: `cd infra && terraform init && terraform apply` creates the bucket, a scoped IAM user, and an access key (`terraform output dvc_access_key_id` / `terraform output -raw dvc_secret_access_key`). Then copy `.env.example` to `.env` and fill in real values (those AWS keys, Postgres passwords, Airflow's Fernet key and admin credentials, Slack webhook, Grafana admin). There's no automated setup script for this yet (see [What's not (yet) included](#whats-not-yet-included)), so every credential needs to be generated and entered manually before anything below will actually run.
 
 **2. Bring the data and a trained champion model up from nothing** (also brings up the Docker Compose stack itself; requires valid AWS credentials in `.env` to pull the dataset from S3):
 
