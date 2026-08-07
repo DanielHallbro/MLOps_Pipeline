@@ -56,9 +56,11 @@
 
 ![Architecture overview](docs/images/architecture-overview.png)
 
-Network intrusion detection is a real-time classification problem: traffic keeps arriving whether or not anyone's watching it, and a human reviewing raw flows manually can't keep pace. This project builds an automated pipeline that classifies network traffic as normal or attack as it happens, and just as importantly, keeps that classifier alive afterward - retraining it on a schedule, monitoring whether its predictions still look right in production, and making it trivial to promote a better model the moment one exists. The goal was never just "train a model that scores well on a test set" - it was proving that model can actually live somewhere and stay useful.
+Network intrusion detection is a real-time cybersecurity problem - malicious traffic keeps arriving whether anyone's watching or not, faster than any analyst could review by hand. This pipeline classifies traffic as normal or attack as it arrives.
 
-Data flows from a public network-traffic dataset through cleaning and feature engineering, into two candidate model families (Random Forest and XGBoost), tracked and compared in MLflow. The best-performing model is served through a FastAPI endpoint, with Apache Airflow handling scheduled retraining and Prometheus/Grafana monitoring the live service. GitHub Actions builds and smoke-tests the whole stack on every push.
+It also stays maintained after that: Airflow retrains it on a schedule, Grafana tracks the live service, and a better model gets promoted to production automatically the moment one wins.
+
+Data flows from a public network-traffic dataset through cleaning and feature engineering, into two candidate model families (Random Forest and XGBoost), tracked and compared in MLflow. The best-performing model is served through a FastAPI endpoint. GitHub Actions builds and smoke-tests the whole stack on every push.
 
 [⬆ Back to top](#readme-top)
 
@@ -524,16 +526,15 @@ The following are never committed to this repo:
 
 ## Conclusion & real-world application
 
-I think of this less as a finished product and more as proof I can build the whole pipeline end to end - from raw data to a model a security team could actually query in real time. In a real SOC I'd expect something like this to sit alongside slower batch analysis (which the Airflow side of this project already hints at), not replace it - fast triage now, deeper analysis later, two different timescales answering two different questions.
+This isn't a finished product, and getting it running somewhere else from scratch would take real work - but it does show every piece of an MLOps pipeline actually working together, from raw data to a model a security team could query live. In a real SOC I'd expect something like this to sit alongside slower batch analysis (which the Airflow side of this project already hints at), not replace it - fast triage now, deeper analysis later.
 
 Building it also made the model's actual limits pretty obvious to me, and I'd rather say them out loud than pretend they're not there:
 
-- I never tested it against adversarial input, and I probably should have. `sbytes_dbytes_ratio` turned out to be one of the most valuable engineered features (see [Data cleaning decisions](#data-cleaning-decisions)) - which also means it's an obvious thing to target if someone wanted to shape traffic to sneak past it.
+- I never tested it against adversarial input, and I probably should have. sbytes_dbytes_ratio turned out to be one of the most valuable engineered features (see Data cleaning decisions) - which also means it's an obvious thing to target if someone wanted to shape traffic to sneak past it.
 - The API has zero authentication right now. Totally fine for a school project running on my own VM, not fine for anything real.
-- Nothing here detects concept drift. The model is frozen at whatever UNSW-NB15 looked like when I trained it - Airflow retrains it on a schedule, but scheduled retraining isn't the same thing as actually noticing when the model has gone stale.
-- It only knows the attacks UNSW-NB15 taught it. Something genuinely new wouldn't necessarily get caught just because the model does well on this particular test set.
+- Nothing here detects concept drift. The model is frozen at whatever UNSW-NB15 looked like when I trained it - Airflow retrains it on a schedule, but that's not the same as noticing when it's gone stale.
 
-None of that means the approach is wrong. It means I know exactly where "working prototype that proves the pipeline" ends and "something I'd actually trust with real traffic" begins - and I'd rather be upfront about that line than pretend it isn't there.
+So this is a working prototype that proves the pipeline - it would need real testing and tuning against production traffic before I'd trust it with anything live.
 
 [⬆ Back to top](#readme-top)
 
