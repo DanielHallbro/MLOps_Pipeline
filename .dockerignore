@@ -1,0 +1,39 @@
+# All four Dockerfiles use "." as their build context, so without
+# this file every `docker build` ships the entire working tree to the
+# Docker daemon - including .env and .git. Nothing leaks into an
+# image today since every COPY instruction is narrowly scoped, but
+# this is one careless `COPY . .` away from baking real secrets into
+# a layer, and excluding this stuff also makes builds noticeably
+# faster since less gets sent to the daemon in the first place.
+
+
+# full version history, never needed to build anything
+.git
+
+# real secrets - the one entry that matters most here
+.env
+
+# raw/processed dataset, large, no Dockerfile COPYs it
+data/
+
+# trained model artifacts, logged to MLflow instead of baked into an image
+models/
+
+# local MLflow tracking leftovers
+mlruns/
+
+# local mlflow.db from early development, pre-Postgres backend
+mlflow/
+
+# architecture diagrams, dashboard screenshots
+docs/
+
+# exploration scripts, not part of any runtime image
+notebooks/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Terraform config/state - can contain sensitive state data
+infra/

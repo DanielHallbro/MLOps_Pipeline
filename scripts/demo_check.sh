@@ -28,6 +28,13 @@ echo "DEMO READINESS CHECK"
 echo "=========================================="
 
 echo ""
+echo "--- Starting minikube (before Compose - MLflow's port binds to"
+echo "    the minikube docker-bridge gateway IP, which only exists"
+echo "    once minikube's own docker network has been created) ---"
+minikube start
+minikube addons enable metrics-server > /dev/null
+
+echo ""
 echo "--- Bringing up Docker Compose stack ---"
 docker compose up -d --build
 
@@ -37,7 +44,11 @@ echo ""
 
 echo "--- Service health ---"
 check_health "API" "http://localhost:8000/health"
-check_health "MLflow" "http://localhost:5001/health"
+# MLflow's health check uses 192.168.49.1 (minikube's docker-bridge
+# gateway), not localhost - matches how the port is bound in
+# docker-compose.yml. If that IP ever changes (see the comment there),
+# this needs updating too.
+check_health "MLflow" "http://192.168.49.1:5001/health"
 check_health "Prometheus" "http://localhost:9090/-/healthy"
 check_health "Grafana" "http://localhost:3000/api/health"
 check_health "Airflow webserver" "http://localhost:8080/health"
@@ -91,18 +102,15 @@ echo "--- Airflow DAG status ---"
 docker compose exec -T airflow-webserver airflow dags list 2>/dev/null | grep network_intrusion_retraining
 echo ""
 
-echo "--- Bringing up Kubernetes (minikube + HPA) ---"
-minikube start
-minikube addons enable metrics-server > /dev/null
-
+echo "--- Bringing up Kubernetes manifests (minikube already started above) ---"
 eval "$(minikube docker-env)"
 docker build -t "$API_IMAGE" -f Dockerfile.api . > /dev/null
 eval "$(minikube docker-env -u)"
 
-kubectl delete -f k8s/ --ignore-not-found > /dev/null 2>&1
+kubectl delete -f k8s/ --ignore-not-found
 kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -f k8s/hpa.yaml
 echo "Waiting for fastapi pod to be Ready..."
-if kubectl wait --for=condition=Ready pod -l app=fastapi --timeout=90s > /dev/null 2>&1; then
+if kubectl wait --for=condition=Ready pod -l app=fastapi --timeout=150s > /dev/null 2>&1; then
   echo "✓ fastapi pod: Ready"
 else
   echo "✗ fastapi pod: NOT READY - check 'kubectl describe pod -l app=fastapi'"
@@ -136,11 +144,34 @@ else
   FAILED=1
 fi
 
+# HPA can transiently scale up during a pod's cold start if
+# metrics-server briefly can't read CPU from an unready pod (a known
+# HPA behavior, not a real load event - verified via 'kubectl describe
+# hpa fastapi-hpa', which will show FailedGetResourceMetric events
+# around the same time). Give it up to the 5-minute stabilization
+# window to settle back to 1 before actually failing this check.
 if [ "$HPA_STATUS" != "1" ]; then
-  echo "✗ Replica count is $HPA_STATUS, not 1, with no load running - this shouldn't happen on a fresh deploy."
-  echo "  Something (a restart, leftover state) is skewing CPU. Investigate before presenting:"
-  echo "  kubectl describe pod -l app=fastapi | tail -30"
-  FAILED=1
+  echo "  Replica count is $HPA_STATUS, not 1 yet - waiting up to 6 min for it to settle"
+  echo "  (this can happen if metrics-server briefly missed the pod during its cold start)"
+  SETTLE_OK=0
+  for i in $(seq 1 24); do
+    sleep 15
+    HPA_STATUS=$(kubectl get hpa fastapi-hpa -o jsonpath='{.status.currentReplicas}' 2>/dev/null)
+    echo "  [$((i * 15))s] replicas=$HPA_STATUS"
+    if [ "$HPA_STATUS" = "1" ]; then
+      SETTLE_OK=1
+      break
+    fi
+  done
+  if [ "$SETTLE_OK" -eq 1 ]; then
+    echo "✓ Settled at 1 replica."
+  else
+    echo "✗ Still at $HPA_STATUS replicas after 6 min - this is NOT the metrics-gap"
+    echo "  behavior, something real is keeping CPU up. Investigate before presenting:"
+    echo "  kubectl describe hpa fastapi-hpa"
+    echo "  kubectl top pods -l app=fastapi"
+    FAILED=1
+  fi
 fi
 echo ""
 

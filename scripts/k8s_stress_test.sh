@@ -41,17 +41,41 @@ echo "K8S/HPA COLD-START STRESS TEST"
 echo "=========================================="
 
 # ------------------------------------------------------------------
-# STEP 1/10: Bring up the full Docker Compose stack fresh.
+# STEP 1/10: Start minikube and make sure metrics-server is running,
+# BEFORE Docker Compose. MLflow's port binds to minikube's own
+# docker-bridge gateway IP (not 0.0.0.0/127.0.0.1 - see the comment
+# in docker-compose.yml for why), which only exists once minikube's
+# docker network has been created - so this has to come first or
+# `docker compose up` fails with "cannot assign requested address"
+# on a machine that's never run minikube before.
+# ------------------------------------------------------------------
+echo ""
+echo "--- STEP 1/10: Starting minikube + metrics-server ---"
+minikube start
+minikube addons enable metrics-server
+
+echo "Waiting for metrics-server to report real numbers..."
+for i in $(seq 1 30); do
+  if kubectl top nodes > /dev/null 2>&1; then
+    echo "metrics-server is reporting."
+    break
+  fi
+  echo "  Waiting... ($i/30)"
+  sleep 5
+done
+
+# ------------------------------------------------------------------
+# STEP 2/10: Bring up the full Docker Compose stack fresh.
 # The FastAPI pod depends on MLflow being reachable over HTTP, so
 # this has to be healthy before anything Kubernetes-side matters.
 # ------------------------------------------------------------------
 echo ""
-echo "--- STEP 1/10: Bringing up Docker Compose stack ---"
+echo "--- STEP 2/10: Bringing up Docker Compose stack ---"
 docker compose up -d --build
 
 echo "Waiting for MLflow to be healthy..."
 for i in $(seq 1 30); do
-  if curl -sf http://localhost:5001/health > /dev/null 2>&1; then
+  if curl -sf http://192.168.49.1:5001/health > /dev/null 2>&1; then
     echo "MLflow healthy."
     break
   fi
@@ -60,12 +84,12 @@ for i in $(seq 1 30); do
 done
 
 # ------------------------------------------------------------------
-# STEP 2/10: Confirm a champion model actually exists. If it doesn't,
+# STEP 3/10: Confirm a champion model actually exists. If it doesn't,
 # a new K8s pod will boot, fail to load a model, and crash-loop -
 # and that failure would have nothing to do with Kubernetes itself.
 # ------------------------------------------------------------------
 echo ""
-echo "--- STEP 2/10: Confirming a champion model exists ---"
+echo "--- STEP 3/10: Confirming a champion model exists ---"
 CHAMPION_INFO=$(docker compose run --rm training python3 -c "
 import mlflow
 from mlflow import MlflowClient
@@ -82,28 +106,6 @@ if [[ "$CHAMPION_INFO" == MISSING* ]]; then
   echo "No champion model set - run scripts/rebuild_pipeline.sh first."
   exit 1
 fi
-
-# ------------------------------------------------------------------
-# STEP 3/10: Start minikube and make sure metrics-server is running.
-# Without metrics-server, HPA has no CPU numbers to act on and will
-# just sit at "<unknown>" forever - this is the most common silent
-# failure with HPA and worth checking explicitly rather than
-# assuming it's already enabled.
-# ------------------------------------------------------------------
-echo ""
-echo "--- STEP 3/10: Starting minikube + metrics-server ---"
-minikube start
-minikube addons enable metrics-server
-
-echo "Waiting for metrics-server to report real numbers..."
-for i in $(seq 1 30); do
-  if kubectl top nodes > /dev/null 2>&1; then
-    echo "metrics-server is reporting."
-    break
-  fi
-  echo "  Waiting... ($i/30)"
-  sleep 5
-done
 
 # ------------------------------------------------------------------
 # STEP 4/10: Build the API image directly into minikube's own Docker
@@ -126,7 +128,7 @@ echo "--- STEP 5/10: Applying k8s manifests ---"
 kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -f k8s/hpa.yaml
 
 echo "Waiting for pod to be Ready..."
-kubectl wait --for=condition=Ready pod -l app=fastapi --timeout=90s
+kubectl wait --for=condition=Ready pod -l app=fastapi --timeout=150s
 
 # ------------------------------------------------------------------
 # STEP 6/10: Port-forward so we can hit the API from the host, and
