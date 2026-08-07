@@ -1,6 +1,12 @@
 """
-retrain_pipeline.py - Retrains all candidate models and promotes the
-best one to champion in MLflow.
+retrain_pipeline.py - Pulls the latest dataset, preprocesses it, trains
+all candidate models, and promotes the best one to champion in MLflow.
+
+dvc_pull fetches the current version of the raw dataset from S3, and
+preprocess regenerates data/processed/*.parquet (plus the scaler/
+encoder artifacts) from it - without both of these, "retraining" would
+silently train on whatever data already happened to be sitting on
+disk, not anything actually fresh.
 
 The four candidate scripts are independent experiments (no data
 dependency between them). They're set to run one at a time
@@ -70,6 +76,29 @@ with DAG(
     tags=["mlops", "training"],
 ) as dag:
 
+    dvc_pull = BashOperator(
+        task_id="dvc_pull",
+        # Pulls the current version of the raw dataset from S3 before
+        # anything else runs. Without this, "retraining" was silently
+        # training on whatever data happened to already be on disk -
+        # this task is what actually makes retraining mean something.
+        bash_command=UMASK_PREFIX + (
+            f"cd {PROJECT_DIR} && dvc pull "
+            "data/UNSW_NB15_training-set.parquet.dvc "
+            "data/UNSW_NB15_testing-set.parquet.dvc "
+            "--force"
+        ),
+    )
+
+    preprocess = BashOperator(
+        task_id="preprocess",
+        # Regenerates data/processed/*.parquet (and the scaler/encoder
+        # artifacts) from whatever dvc_pull just fetched. Without this,
+        # a fresh dvc_pull still wouldn't matter - the training scripts
+        # read from data/processed/, not the raw files directly.
+        bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/preprocess.py",
+    )
+
     train_random_forest = BashOperator(
         task_id="train_random_forest",
         bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/train_random_forest.py",
@@ -95,7 +124,7 @@ with DAG(
         bash_command=UMASK_PREFIX + f"cd {PROJECT_DIR} && python3 src/training/promote_champion.py",
     )
 
-    [
+    dvc_pull >> preprocess >> [
         train_random_forest,
         train_xgboost,
         train_xgboost_tuned,

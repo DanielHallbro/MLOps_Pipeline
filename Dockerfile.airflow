@@ -1,6 +1,11 @@
 FROM apache/airflow:2.10.4-python3.11
 
-# Same dependencies your training scripts already need, so Airflow
+# Same dependencies training scripts already need, so Airflow
 # tasks can run them directly inside this container.
 COPY src/training/requirements.txt /tmp/training-requirements.txt
 RUN pip install --no-cache-dir -r /tmp/training-requirements.txt
+
+# DVC needed here now too: the retraining DAG pulls fresh raw data
+# from S3 before preprocessing/training, so this image needs the same
+# dvc[s3] install Dockerfile.training already has.
+RUN pip install --no-cache-dir "dvc[s3]"
