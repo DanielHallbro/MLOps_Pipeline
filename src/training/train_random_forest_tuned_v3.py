@@ -51,8 +51,13 @@ print("STEP 3: Setting up GridSearchCV...")
 # narrowed from v2 to keep runtime comparable to the other candidate
 # scripts - 8 combinations x 2-fold = 16 fits, versus v2's 60.
 param_grid = {
+    # Fewer trees (50) alongside the baseline count (100).
     "n_estimators": [50, 100],
+    # Both shallower than the baseline's 15 - 15 itself is deliberately
+    # excluded, so this run losing tells us 15 genuinely helps.
     "max_depth": [10, 12],
+    # Not in the baseline at all: min samples a node needs before it
+    # can split further. Higher = earlier stopping, more conservative.
     "min_samples_split": [2, 4],
 }
 print(f"  Grid: {param_grid}")
@@ -66,9 +71,13 @@ base_model = RandomForestClassifier(
 grid_search = GridSearchCV(
     estimator=base_model,
     param_grid=param_grid,
+    # F1 - same metric used for the final champion pick, so tuning
+    # and selection optimize for the same thing.
     scoring="f1",
+    # 2-fold CV: train on half, validate on the other half, swap,
+    # average. Narrowed from v2's 3-fold just to keep runtime down.
     cv=2,  # was 3
-    n_jobs=-1,
+    n_jobs=-1,  # same meaning as train_random_forest.py
     verbose=1,
 )
 

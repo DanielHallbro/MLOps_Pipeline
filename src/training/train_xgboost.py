@@ -49,8 +49,18 @@ with mlflow.start_run(run_name="xgboost_baseline"):
     scale_pos_weight = n_normal / n_attack
 
     n_estimators = 100
+    # Boosting rounds - NOT the same idea as RF's n_estimators. RF's
+    # trees are independent and vote at the end. XGBoost's trees are
+    # sequential: each new one corrects the current ensemble's errors.
+
     max_depth = 6
+    # Much shallower than RF's 15, on purpose: since boosting is
+    # sequential, a deep tree's mistakes get inherited by every tree
+    # after it. Shallow keeps each correction small and controlled.
+
     learning_rate = 0.1
+    # Weight given to each new tree's correction - lower is
+    # safer/slower. 0.1 is the standard default.
 
     model = XGBClassifier(
         n_estimators=n_estimators,
@@ -58,6 +68,8 @@ with mlflow.start_run(run_name="xgboost_baseline"):
         learning_rate=learning_rate,
         scale_pos_weight=scale_pos_weight,
         random_state=42,
+        # Loss function XGBoost optimizes DURING training - different
+        # from F1, which only gets computed AFTER, to compare models.
         eval_metric="logloss",
         n_jobs=-1,
     )

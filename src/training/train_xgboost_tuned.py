@@ -48,6 +48,10 @@ n_attack = (y_train == 1).sum()
 scale_pos_weight = n_normal / n_attack
 
 param_grid = {
+    # Includes 6, the baseline's own depth - unlike the RF-tuned
+    # script, this search could rediscover the baseline exactly. It
+    # still didn't win, so that's a real alternative losing, not a
+    # search that never got the chance.
     "max_depth": [3, 6],
     "n_estimators": [50, 100],
     "learning_rate": [0.1, 0.2],
@@ -69,6 +73,8 @@ grid_search = GridSearchCV(
     estimator=base_model,
     param_grid=param_grid,
     scoring="f1",
+    # 5-fold CV - more thorough than the RF-tuned script's 2-fold,
+    # affordable since XGBoost trains faster per tree.
     cv=5,
     n_jobs=-1,
     verbose=1,

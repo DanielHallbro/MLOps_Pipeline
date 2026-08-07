@@ -44,12 +44,23 @@ with mlflow.start_run(run_name="random_forest_baseline"):
     # STEP 3: Train the model
     # -------------------------------------------------------
     print("STEP 3: Training Random Forest...")
-    # class_weight='balanced' tells the model to pay more attention to
-    # whichever class has fewer examples, useful since our classes
-    # aren't a perfect 50/50 split (68% attack / 32% normal).
     n_estimators = 100
+    # Number of trees. More = a more stable average vote, but
+    # returns shrink fast past ~100.
     max_depth = 15
+    # Max depth per tree. Deeper trees can memorize noise
+    # (overfitting) - 15 beat shallower options in testing.
 
+    # class_weight="balanced": weights the rarer class higher during
+    # training so the model can't win by just favoring the common
+    # class. Doesn't touch the actual data, only the training cost.
+
+    # random_state=42: fixes all randomness so re-running this script
+    # produces the identical model every time.
+
+    # n_jobs=-1: uses all CPU cores for THIS training run. Not the
+    # same as Airflow's PARALLELISM=1, which limits how many
+    # DIFFERENT scripts run at once - they don't conflict.
     model = RandomForestClassifier(
         n_estimators=n_estimators,
         max_depth=max_depth,
@@ -74,11 +85,20 @@ with mlflow.start_run(run_name="random_forest_baseline"):
     # STEP 5: Evaluate on the test set
     # -------------------------------------------------------
     print("STEP 5: Evaluating on test data...")
+    # predict() averages each tree's predicted probability (soft
+    # voting), not a simple majority vote of hard yes/no answers.
     y_pred = model.predict(X_test)
 
+    # accuracy: % correct overall - can look good even on a weak
+    # model here since classes aren't balanced (68/32).
     accuracy = accuracy_score(y_test, y_pred)
+    # precision: of what we called "attack", how much really was.
     precision = precision_score(y_test, y_pred)
+    # recall: of all real attacks, how many we caught - missing this
+    # is the worse failure mode for an intrusion detector.
     recall = recall_score(y_test, y_pred)
+    # f1: balances precision and recall - the metric that actually
+    # picks the champion model (see promote_champion.py).
     f1 = f1_score(y_test, y_pred)
 
     print(f"  Accuracy:  {accuracy:.4f}")
